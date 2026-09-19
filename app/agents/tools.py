@@ -3,8 +3,9 @@
 import ast
 import logging
 import operator
-from typing import Callable
+from collections.abc import Callable
 
+from duckduckgo_search import DDGS
 from langchain_core.tools import BaseTool, tool
 
 logger = logging.getLogger(__name__)
@@ -74,7 +75,38 @@ def echo(text: str) -> str:
     return text
 
 
-TOOL_REGISTRY: dict[str, BaseTool] = {t.name: t for t in (calculator, echo)}
+@tool
+def web_search(query: str) -> str:
+    """Search the web for up-to-date information not known to the model.
+
+    Uses DuckDuckGo's search engine (no API key required) and returns the
+    top results formatted as a short list of title/url/snippet entries.
+
+    Args:
+        query: The search query.
+
+    Raises:
+        ValueError: If the query is empty or the search request fails.
+    """
+    if not query or not query.strip():
+        raise ValueError("Web search tool requires a non-empty query.")
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=5))
+    except Exception as exc:
+        logger.warning("Web search failed for query %r: %s", query, exc)
+        raise ValueError(f"Web search failed for {query!r}: {exc}") from exc
+
+    if not results:
+        return "No results found."
+
+    return "\n".join(
+        f"- {r.get('title', 'Untitled')}: {r.get('href', '')} — {r.get('body', '')}"
+        for r in results
+    )
+
+
+TOOL_REGISTRY: dict[str, BaseTool] = {t.name: t for t in (calculator, echo, web_search)}
 
 
 def run_tool(tool_name: str, tool_input: str) -> str:

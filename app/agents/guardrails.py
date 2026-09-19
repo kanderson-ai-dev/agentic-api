@@ -1,25 +1,32 @@
-"""Guardrails: input sanitization and prompt-injection detection.
+"""Guardrails: input sanitization/prompt-injection detection and output screening.
 
-Mitigates OWASP LLM01 (Prompt Injection) by sanitizing user input and
-screening it against known jailbreak/injection patterns before it ever
-reaches the planning LLM.
+Mitigates:
+- OWASP LLM01 (Prompt Injection): sanitizes user input and screens it against
+  known jailbreak/injection patterns before it ever reaches the planning LLM.
+- OWASP LLM02 (Insecure Output Handling): screens the LLM/tool-generated
+  output before it is returned to the caller, catching system-prompt leaks
+  and cases where the model reflects back an injected instruction.
 """
 
 import logging
 import re
 import unicodedata
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Mapping
 
 from app.core.prompts import (
     GUARDRAIL_BLOCKED_ERROR_TEMPLATE,
     GUARDRAIL_EMPTY_INPUT_REASON,
     GUARDRAIL_INJECTION_REASON_TEMPLATE,
+    OUTPUT_BLOCKED_MESSAGE,
+    OUTPUT_GUARDRAIL_ERROR_TEMPLATE,
+    PLANNER_SYSTEM_PROMPT,
 )
 
 logger = logging.getLogger(__name__)
 
 _MAX_INPUT_LENGTH = 4000
+_SYSTEM_PROMPT_LEAK_NGRAM_SIZE = 8
 
 # Heuristic patterns commonly seen in prompt injection / jailbreak attempts.
 _INJECTION_PATTERNS: list[re.Pattern[str]] = [
@@ -102,3 +109,53 @@ def guardrail_node(state: Mapping[str, object]) -> dict[str, object]:
             "errors": [GUARDRAIL_BLOCKED_ERROR_TEMPLATE.format(reason=result.reason)],
         }
     return {"input_text": result.sanitized_input, "blocked": False, "errors": []}
+
+
+def _ngrams(text: str, size: int) -> set[str]:
+    """Return the set of lowercase word n-grams of the given size found in `text`."""
+    words = re.findall(r"\w+", text.lower())
+    if len(words) < size:
+        return set()
+    return {" ".join(words[i : i + size]) for i in range(len(words) - size + 1)}
+
+
+_SYSTEM_PROMPT_NGRAMS = _ngrams(PLANNER_SYSTEM_PROMPT, _SYSTEM_PROMPT_LEAK_NGRAM_SIZE)
+
+
+def detect_system_prompt_leak(text: str) -> str | None:
+    """Return a reason if `text` reproduces a long enough fragment of the system prompt."""
+    overlap = _ngrams(text, _SYSTEM_PROMPT_LEAK_NGRAM_SIZE) & _SYSTEM_PROMPT_NGRAMS
+    if overlap:
+        return f"system prompt leak detected (shared phrase: {next(iter(overlap))!r})"
+    return None
+
+
+def screen_output(text: str) -> GuardrailResult:
+    """Screen LLM/tool-generated output for leakage or reflected injection (OWASP LLM02)."""
+    if not text:
+        return GuardrailResult(is_safe=True, sanitized_input=text)
+
+    reason = detect_prompt_injection(text) or detect_system_prompt_leak(text)
+    if reason:
+        logger.warning("Output guardrail blocked: %s", reason)
+        return GuardrailResult(is_safe=False, sanitized_input=text, reason=reason)
+    return GuardrailResult(is_safe=True, sanitized_input=text)
+
+
+def output_guardrail_node(state: Mapping[str, object]) -> dict[str, object]:
+    """LangGraph node: screen `final_output` before it is returned to the caller.
+
+    Runs after the execution node. If the output leaks the system prompt or
+    reflects a previously-injected instruction, it is replaced with a
+    generic safe message and `output_flagged` is set to `True`.
+    """
+    result = screen_output(str(state.get("final_output", "")))
+    if not result.is_safe:
+        errors = list(state.get("errors", []))
+        errors.append(OUTPUT_GUARDRAIL_ERROR_TEMPLATE.format(reason=result.reason))
+        return {
+            "final_output": OUTPUT_BLOCKED_MESSAGE,
+            "output_flagged": True,
+            "errors": errors,
+        }
+    return {"output_flagged": False}

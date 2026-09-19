@@ -3,7 +3,7 @@
 import os
 from functools import lru_cache
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -31,6 +31,22 @@ class Settings(BaseSettings):
     langchain_endpoint: str = "https://api.smith.langchain.com"
     langchain_api_key: SecretStr | None = None
     langchain_project: str = "agentic-api"
+
+    # Conversation memory (LangGraph checkpointer)
+    checkpoint_db_path: str = "data/checkpoints.sqlite"
+
+    # API authentication (optional; enforced only when configured)
+    agentic_api_key: SecretStr | None = None
+
+    @field_validator(
+        "openai_api_key", "langchain_api_key", "agentic_api_key", mode="before"
+    )
+    @classmethod
+    def _blank_secret_to_none(cls, value: object) -> object:
+        """Treat an empty-string secret (e.g. an unset GitHub Actions secret) as unset."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 @lru_cache
