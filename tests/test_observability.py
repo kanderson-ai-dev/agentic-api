@@ -9,7 +9,17 @@ class TestHealthChecks:
         assert response.status_code == 200
         assert response.json() == {"status": "alive"}
 
-    def test_readiness_ok_when_fully_configured(self, client) -> None:
+    def test_readiness_ok_when_fully_configured(self, client, monkeypatch) -> None:
+        # Use deterministic fake settings rather than relying on ambient
+        # OPENAI_API_KEY/LANGCHAIN_API_KEY, so this test's outcome doesn't
+        # depend on whether real secrets happen to be configured (e.g. in CI).
+        fake_settings = Settings(
+            openai_api_key="sk-test-key",
+            langchain_tracing_v2=True,
+            langchain_api_key="lsv2-test-key",
+        )
+        monkeypatch.setattr("app.api.health.get_settings", lambda: fake_settings)
+
         response = client.get("/health/ready")
         assert response.status_code == 200
         assert response.json()["status"] == "ready"
