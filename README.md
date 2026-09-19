@@ -108,11 +108,14 @@ agentic-api/
 
 Every graph execution is traced end-to-end via LangSmith, correlated with structured JSON logs and Prometheus metrics. The screenshots below (in [`docs/assets/`](docs/assets/)) illustrate real runs of the service:
 
-| Scenario | Screenshot |
-|---|---|
-| Successful agent execution | ![Successful execution](docs/assets/succesful_execution.png) |
-| Calculator tool execution | ![Calculator tool execution](docs/assets/calculator_execution.png) |
-| Prompt injection blocked by guardrails | ![Guardrail blocked request](docs/assets/guardrail_blocked.png) |
+#### Successful Agent Execution
+![Successful execution](docs/assets/succesful_execution.png)
+
+#### Calculator Tool Execution
+![Calculator tool execution](docs/assets/calculator_execution.png)
+
+#### Guardrail Blocked Request
+![Guardrail blocked request](docs/assets/guardrail_blocked.png)
 
 - **LangSmith tracing**: with `LANGCHAIN_TRACING_V2=true` and a valid `LANGCHAIN_API_KEY`, every planner LLM call is recorded as a run under `LANGCHAIN_PROJECT`, tagged with the request's `X-Request-ID` for cross-referencing with application logs.
 - **LangSmith evaluation**: `tests/test_langsmith_evaluation.py` runs a real `langsmith.evaluate()` experiment against a small fixed dataset (`agentic-api-eval`), producing a visible **Experiment** in the dashboard — not just a connectivity smoke test.
