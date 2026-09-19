@@ -1,0 +1,9 @@
+services:
+  agentic-api:
+    build: .
+    container_name: agentic-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    restart: unless-stopped
