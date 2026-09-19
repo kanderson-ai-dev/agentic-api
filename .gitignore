@@ -5,6 +5,12 @@ venv/
 # Environment variables
 .env
 
+# Runtime state (SQLite checkpoints, etc.)
+data/
+
+# Local-only agent instructions (not published to the repo)
+AGENTS.md
+
 # Python artifacts
 __pycache__/
 *.py[cod]
