@@ -11,9 +11,9 @@ Mitigates:
 import logging
 import re
 import unicodedata
-from collections.abc import Mapping
 from dataclasses import dataclass
 
+from app.agents.state import AgentState
 from app.core.prompts import (
     GUARDRAIL_BLOCKED_ERROR_TEMPLATE,
     GUARDRAIL_EMPTY_INPUT_REASON,
@@ -94,7 +94,7 @@ def run_guardrails(raw_input: str) -> GuardrailResult:
     return GuardrailResult(is_safe=True, sanitized_input=sanitized, reason=None)
 
 
-def guardrail_node(state: Mapping[str, object]) -> dict[str, object]:
+def guardrail_node(state: AgentState) -> dict[str, object]:
     """LangGraph node: sanitize `input_text` and flag prompt injection attempts.
 
     Designed to run as the first node of the agent graph. Downstream nodes
@@ -142,7 +142,7 @@ def screen_output(text: str) -> GuardrailResult:
     return GuardrailResult(is_safe=True, sanitized_input=text)
 
 
-def output_guardrail_node(state: Mapping[str, object]) -> dict[str, object]:
+def output_guardrail_node(state: AgentState) -> dict[str, object]:
     """LangGraph node: screen `final_output` before it is returned to the caller.
 
     Runs after the execution node. If the output leaks the system prompt or

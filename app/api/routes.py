@@ -3,6 +3,7 @@
 import json
 import logging
 import uuid
+from collections.abc import AsyncIterator, Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -69,7 +70,7 @@ def _serialize_update(update: dict[str, object]) -> dict[str, object]:
     """Make a partial node state update JSON-serializable for SSE streaming."""
     serialized: dict[str, object] = {}
     for key, value in update.items():
-        if key == "messages":
+        if key == "messages" and isinstance(value, Iterable):
             serialized[key] = [
                 {"type": getattr(m, "type", "unknown"), "content": getattr(m, "content", "")}
                 for m in value
@@ -121,7 +122,7 @@ async def stream_agent(payload: AgentRunRequest, request: Request) -> StreamingR
     session_id = payload.session_id or str(uuid.uuid4())
     config = _run_config(request, session_id, tags=["agentic-api", "stream"])
 
-    async def event_stream():
+    async def event_stream() -> AsyncIterator[str]:
         try:
             async for update in graph.astream(
                 _initial_state(payload.input), config=config, stream_mode="updates"

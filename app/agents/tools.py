@@ -124,4 +124,4 @@ def run_tool(tool_name: str, tool_input: str) -> str:
     tool_obj = TOOL_REGISTRY.get(tool_name)
     if tool_obj is None:
         raise ValueError(f"Unknown tool: {tool_name!r}")
-    return tool_obj.invoke(tool_input)
+    return str(tool_obj.invoke(tool_input))

@@ -1,14 +1,14 @@
 """LangGraph agent workflow: guardrail -> planner -> execution -> output guardrail."""
 
 import logging
-from typing import Annotated, Literal
+from typing import Literal
 
 import openai
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field
 from tenacity import (
@@ -18,9 +18,9 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
-from typing_extensions import TypedDict
 
 from app.agents.guardrails import guardrail_node, output_guardrail_node
+from app.agents.state import AgentState, ToolCall
 from app.agents.tools import run_tool
 from app.core.config import get_settings
 from app.core.metrics import agent_blocked_requests_total, agent_tool_calls_total
@@ -31,14 +31,6 @@ from app.core.prompts import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class ToolCall(TypedDict):
-    """A single planned (and optionally executed) tool invocation."""
-
-    tool: Literal["calculator", "echo", "web_search", "none"]
-    input: str
-    output: str
 
 
 class ToolCallPlan(BaseModel):
@@ -57,19 +49,6 @@ class PlanResult(BaseModel):
     tool_calls: list[ToolCallPlan] = Field(
         default_factory=list, description="Tool calls required to fulfill the plan."
     )
-
-
-class AgentState(TypedDict):
-    """Shared state propagated across the graph nodes."""
-
-    input_text: str
-    messages: Annotated[list[AnyMessage], add_messages]
-    plan: str
-    tool_calls: list[ToolCall]
-    final_output: str
-    errors: list[str]
-    blocked: bool
-    output_flagged: bool
 
 
 def route_after_guardrail(state: AgentState) -> Literal["planner", "error_output"]:
@@ -93,8 +72,9 @@ def error_output_node(state: AgentState) -> dict[str, object]:
 def _build_llm() -> ChatOpenAI:
     """Instantiate the planner LLM using project settings."""
     settings = get_settings()
-    api_key = settings.openai_api_key.get_secret_value() if settings.openai_api_key else None
-    return ChatOpenAI(model="gpt-4o-mini", temperature=0, api_key=api_key)
+    return ChatOpenAI(
+        model="gpt-4o-mini", temperature=0, api_key=settings.openai_api_key
+    )
 
 
 @retry(
@@ -106,7 +86,7 @@ def _build_llm() -> ChatOpenAI:
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )
-def _invoke_planner(llm, messages: list) -> PlanResult:
+def _invoke_planner(llm: Runnable, messages: list[AnyMessage]) -> PlanResult:
     """Invoke the structured-output planner LLM, retrying on transient OpenAI errors."""
     result = llm.invoke(messages)
     assert isinstance(result, PlanResult)
