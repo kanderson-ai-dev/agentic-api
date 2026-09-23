@@ -135,7 +135,8 @@ agentic-api/
 │   │   ├── config.py        # pydantic-settings env config
 │   │   ├── prompts.py       # Centralized system prompts / message templates
 │   │   ├── logging.py       # structlog: JSON/console + stdlib bridge
-│   │   └── metrics.py       # Prometheus counters + instrumentator
+│   │   ├── metrics.py       # Prometheus counters + instrumentator
+│   │   └── ratelimit.py     # Sliding-window per-client rate limiter
 │   ├── agents/
 │   │   ├── graph.py         # LangGraph workflow: guardrail → planner → execution → output guardrail
 │   │   ├── state.py         # AgentState / ToolCall TypedDicts
@@ -144,7 +145,7 @@ agentic-api/
 │   ├── api/
 │   │   ├── routes.py        # POST /agent/run, POST /agent/stream (SSE)
 │   │   ├── health.py        # GET /health/live, GET /health/ready
-│   │   ├── dependencies.py  # Optional API key auth
+│   │   ├── dependencies.py  # API key auth + rate limit dependencies
 │   │   └── middleware.py    # X-Request-ID correlation
 │   └── services/            # External integrations (reserved)
 ├── tests/                   # 52 tests — deterministic fakes, zero live calls by default
