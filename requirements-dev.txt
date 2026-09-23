@@ -1,0 +1,17 @@
+# Development dependencies: runtime pins plus lint/type-check/test tooling.
+-r requirements.txt
+
+# Test framework
+pytest==9.1.1
+iniconfig==2.3.0
+pluggy==1.6.0
+
+# Linting
+ruff==0.16.8
+
+# Static type checking
+mypy==2.3.1
+mypy_extensions==1.1.0
+pathspec==1.1.1
+ast-serialize==0.11.2
+librt==0.15.0

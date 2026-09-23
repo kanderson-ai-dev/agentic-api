@@ -1,3 +1,11 @@
+[project]
+name = "agentic-api"
+version = "0.1.0"
+description = "Production-grade FastAPI service exposing a guardrailed LangGraph agent with multi-turn memory, streaming, and full observability."
+authors = [{ name = "Kaarsten Anderson" }]
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
