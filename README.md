@@ -39,6 +39,7 @@ The planner runs on OpenAI `gpt-4o-mini` with structured output, orchestrated as
 - 📡 **SSE streaming out of the box** — `POST /agent/stream` emits one Server-Sent Event per graph node, so a UI can show "screening → planning → executing" live instead of a spinner.
 - 🔭 **Observable end to end** — every run is traced to LangSmith (tagged with the request's `X-Request-ID`), JSON structured logs share the same correlation id, and Prometheus exposes custom counters (`agent_tool_calls_total`, `agent_blocked_requests_total`) at `/metrics`.
 - 🧪 **CI is green with zero secrets** — the suite runs against a deterministic fake planner and an offline LangSmith evaluation, so a fork clones and passes with no API keys. An optional live job re-runs everything against real OpenAI/LangSmith when secrets exist.
+- ⛔ **Built-in rate limiting** — configurable per-minute request budget per API key/IP on the agent endpoints (`RATE_LIMIT_PER_MINUTE`), returning a clean `429` instead of a bill surprise.
 - 🔑 **Auth when you need it** — optional `X-API-Key` enforcement on agent endpoints; health and metrics stay open for orchestrators.
 - 🐳 **Production-shaped Docker** — non-root image with a `HEALTHCHECK`, plus `docker-compose.yml` with a persistent volume for conversation memory.
 
@@ -146,7 +147,7 @@ agentic-api/
 │   │   ├── dependencies.py  # Optional API key auth
 │   │   └── middleware.py    # X-Request-ID correlation
 │   └── services/            # External integrations (reserved)
-├── tests/                   # 49 tests — deterministic fakes, zero live calls by default
+├── tests/                   # 52 tests — deterministic fakes, zero live calls by default
 ├── docs/assets/             # Real run screenshots (below)
 ├── Dockerfile               # Non-root image with HEALTHCHECK
 ├── docker-compose.yml       # Service + persistent memory volume
@@ -190,7 +191,7 @@ Most LLM demos break the moment a user pastes a jailbreak, the API rate-limits, 
 - Model tricked into echoing its system prompt? → output guardrail replaces the response before it ships.
 - Transient OpenAI rate limit? → retried with exponential backoff, not a 500 to your user.
 - User asks "now double that" six turns in? → SQLite checkpointer keeps full context per `session_id`.
-- Someone hammers the endpoint? → optional API-key auth keeps the door closed; metrics show you the traffic either way.
+- Someone hammers the endpoint? → rate-limited per API key/IP before it ever reaches the LLM — a `429`, not a surprise invoice. Optional `X-API-Key` auth keeps the door closed entirely.
 - Need to debug what the model actually did? → LangSmith traces, JSON logs, and Prometheus counters tell the same story under one `request_id`.
 
 Known limits, stated honestly: the SQLite checkpointer suits demos and light workloads — high-concurrency production should move to `langgraph-checkpoint-postgres`; and `AGENTIC_API_KEY` is simple shared-secret auth, not OAuth2/JWT identity.
@@ -216,6 +217,7 @@ All configuration is environment-based via `pydantic-settings`. See [`.env.examp
 | `LANGCHAIN_PROJECT` | `agentic-api` | LangSmith project name for traces. |
 | `CHECKPOINT_DB_PATH` | `data/checkpoints.sqlite` | Path to the SQLite database used for conversation memory. |
 | `AGENTIC_API_KEY` | — (unset) | If set, requires a matching `X-API-Key` header on `/agent/run` and `/agent/stream`. Left open if unset (local/dev friendly). |
+| `RATE_LIMIT_PER_MINUTE` | `60` | Per-client request budget on `/agent/run` and `/agent/stream` (keyed by API key when present, otherwise IP). `0` disables enforcement. |
 
 ---
 
@@ -315,12 +317,13 @@ curl -s -X POST http://localhost:8000/api/v1/agent/run \
 pytest -v --cov=app
 ```
 
-**49 tests, fully offline by default** — no `OPENAI_API_KEY` or `LANGCHAIN_API_KEY` needed. The planner LLM is replaced by a deterministic fake that exercises the entire graph (guardrail → plan → tool execution → output screening), and the LangSmith evaluation runs against an in-memory stand-in. The suite covers:
+**52 tests, fully offline by default** — no `OPENAI_API_KEY` or `LANGCHAIN_API_KEY` needed. The planner LLM is replaced by a deterministic fake that exercises the entire graph (guardrail → plan → tool execution → output screening), and the LangSmith evaluation runs against an in-memory stand-in. The suite covers:
 
 - **Guardrails** — input injection detection and output leakage/reflection screening (OWASP LLM01 + LLM02).
 - **Tools** — `calculator`, `echo`, `web_search` (DuckDuckGo mocked).
 - **Resilience** — planner retry/backoff on transient OpenAI errors.
 - **Auth** — API-key enforcement, with `/health/*` and `/metrics` staying open.
+- **Rate limiting** — `429` once the per-client budget is spent, on both agent endpoints.
 - **Memory** — multi-turn history growth and `session_id` isolation via the real SQLite checkpointer.
 - **Streaming** — SSE event structure for safe and blocked requests.
 - **Observability** — health checks, `X-Request-ID` propagation, `/metrics`.
