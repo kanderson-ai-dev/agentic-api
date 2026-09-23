@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # API authentication (optional; enforced only when configured)
     agentic_api_key: SecretStr | None = None
 
+    # Rate limiting (per client identity; 0 disables)
+    rate_limit_per_minute: int = 60
+
     @field_validator(
         "openai_api_key", "langchain_api_key", "agentic_api_key", mode="before"
     )

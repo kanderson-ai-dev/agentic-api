@@ -10,7 +10,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agents.graph import ToolCall
-from app.api.dependencies import verify_api_key
+from app.api.dependencies import enforce_rate_limit, verify_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ def _serialize_update(update: dict[str, object]) -> dict[str, object]:
     response_model=AgentRunResponse,
     status_code=status.HTTP_200_OK,
     tags=["agent"],
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(enforce_rate_limit), Depends(verify_api_key)],
 )
 async def run_agent(payload: AgentRunRequest, request: Request) -> AgentRunResponse:
     """Execute the LangGraph agent workflow with the provided input."""
@@ -114,7 +114,7 @@ async def run_agent(payload: AgentRunRequest, request: Request) -> AgentRunRespo
 @router.post(
     "/agent/stream",
     tags=["agent"],
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(enforce_rate_limit), Depends(verify_api_key)],
 )
 async def stream_agent(payload: AgentRunRequest, request: Request) -> StreamingResponse:
     """Execute the agent workflow, streaming each node's state update as it happens (SSE)."""

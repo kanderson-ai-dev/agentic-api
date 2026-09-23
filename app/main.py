@@ -15,6 +15,7 @@ from app.api.routes import router as api_router
 from app.core.config import configure_langchain_environment, get_settings
 from app.core.logging import configure_logging
 from app.core.metrics import setup_instrumentator
+from app.core.ratelimit import RateLimiter
 
 settings = get_settings()
 configure_langchain_environment(settings)
@@ -43,6 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     async with AsyncSqliteSaver.from_conn_string(str(db_path)) as checkpointer:
         app.state.agent_graph = build_graph(checkpointer=checkpointer)
+        app.state.rate_limiter = RateLimiter()
         yield
 
     logger.info("Shutting down %s", settings.app_name)
