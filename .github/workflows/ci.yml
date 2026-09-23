@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch: {}          # manual trigger also runs the live-e2e job
+  schedule:
+    - cron: "0 6 * * 1"          # weekly live end-to-end run against real APIs
 
 jobs:
   test:
@@ -26,12 +29,36 @@ jobs:
       - name: Type check (mypy)
         run: mypy app
 
-      - name: Run tests
+      # No API keys are injected here: the suite runs fully offline against
+      # deterministic fakes, so CI is green on a clean fork with zero secrets.
+      - name: Run tests with coverage (offline, no secrets required)
+        env:
+          LANGCHAIN_TRACING_V2: "false"
+          LANGCHAIN_PROJECT: agentic-api-ci
+        run: pytest -v --cov=app --cov-report=term-missing
+
+  live-e2e:
+    name: Live end-to-end (manual/weekly, requires secrets)
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests against real OpenAI + LangSmith
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
-          LANGCHAIN_TRACING_V2: "false"
+          LANGCHAIN_TRACING_V2: "true"
           LANGCHAIN_PROJECT: agentic-api-ci
+          AGENTIC_LIVE_TESTS: "1"
         run: pytest -v
 
   docker-build:

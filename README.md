@@ -1,6 +1,7 @@
 # Agentic Micro API Service
 
 [![CI](https://github.com/kanderson-ai-dev/agentic-api/actions/workflows/ci.yml/badge.svg)](https://github.com/kanderson-ai-dev/agentic-api/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen)](https://github.com/kanderson-ai-dev/agentic-api/actions/workflows/ci.yml)
 
 Production-grade FastAPI service that exposes a guardrailed [LangGraph](https://github.com/langchain-ai/langgraph) agent workflow, backed by OpenAI (`gpt-4o-mini`) for planning, with multi-turn memory, streaming responses, and full observability (LangSmith tracing/evaluation, structured logs, and Prometheus metrics).
 
