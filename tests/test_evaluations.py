@@ -2,7 +2,7 @@
 
 import os
 
-from conftest import initial_state, requires_openai_key, settings
+from conftest import initial_state, settings
 
 from app.agents.graph import agent_graph
 from app.agents.guardrails import run_guardrails
@@ -52,16 +52,14 @@ class TestAgentGraph:
         assert any("guardrail_blocked" in err for err in state["errors"])
         assert "blocked" in state["final_output"].lower()
 
-    @requires_openai_key
-    def test_graph_executes_calculator_tool_for_safe_input(self) -> None:
+    def test_graph_executes_calculator_tool_for_safe_input(self, fake_planner) -> None:
         state = agent_graph.invoke(initial_state("What is 15 times 4?"))
         assert state["blocked"] is False
         assert state["errors"] == []
         assert any(call["tool"] == "calculator" for call in state["tool_calls"])
         assert "60" in state["final_output"]
 
-    @requires_openai_key
-    def test_agent_run_endpoint_returns_structured_output(self, client) -> None:
+    def test_agent_run_endpoint_returns_structured_output(self, fake_planner, client) -> None:
         response = client.post("/api/v1/agent/run", json={"input": "Say hello to the team"})
         assert response.status_code == 200
         body = response.json()

@@ -2,8 +2,6 @@
 
 import asyncio
 
-from conftest import requires_openai_key
-
 from app.main import app as fastapi_app
 
 
@@ -19,8 +17,7 @@ def _get_persisted_messages(session_id: str) -> list:
 
 
 class TestConversationMemory:
-    @requires_openai_key
-    def test_message_history_grows_across_turns_with_same_session(self, client) -> None:
+    def test_message_history_grows_across_turns_with_same_session(self, fake_planner, client) -> None:
         first = client.post("/api/v1/agent/run", json={"input": "What is 8 plus 7?"})
         assert first.status_code == 200
         session_id = first.json()["session_id"]
@@ -38,8 +35,7 @@ class TestConversationMemory:
         after_second_turn = _get_persisted_messages(session_id)
         assert len(after_second_turn) == 4  # two turns x (Human + AI)
 
-    @requires_openai_key
-    def test_different_sessions_do_not_share_history(self, client) -> None:
+    def test_different_sessions_do_not_share_history(self, fake_planner, client) -> None:
         first = client.post("/api/v1/agent/run", json={"input": "Remember the number 7."})
         second = client.post("/api/v1/agent/run", json={"input": "Remember the number 9."})
 

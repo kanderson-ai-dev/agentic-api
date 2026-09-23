@@ -2,8 +2,6 @@
 
 import json
 
-from conftest import requires_openai_key
-
 
 class TestAgentStream:
     def test_streams_events_for_blocked_request(self, client) -> None:
@@ -23,8 +21,7 @@ class TestAgentStream:
         assert first_event["node"] == "guardrail"
         assert first_event["update"]["blocked"] is True
 
-    @requires_openai_key
-    def test_streams_events_for_safe_request(self, client) -> None:
+    def test_streams_events_for_safe_request(self, fake_planner, client) -> None:
         with client.stream(
             "POST", "/api/v1/agent/stream", json={"input": "What is 6 times 7?"}
         ) as response:

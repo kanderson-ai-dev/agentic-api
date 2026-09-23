@@ -1,12 +1,24 @@
-"""Real LangSmith evaluation experiment for the agentic-api workflow.
+"""LangSmith evaluation experiment for the agentic-api workflow.
 
-Unlike the lightweight tracing smoke test in `test_evaluations.py`, this
-creates (or reuses) a small dataset in LangSmith and runs `langsmith.evaluate()`
-against it, producing a real, visible Experiment in the LangSmith dashboard
-under `LANGCHAIN_PROJECT` (rather than just verifying connectivity).
+Runs in two modes:
+
+- **Offline (default):** iterates the fixed `_EXAMPLES` dataset through the
+  real agent graph (with a deterministic fake planner) and applies the same
+  evaluators, so dataset shape and evaluator wiring are verified in CI with
+  zero secrets and zero API calls.
+- **Live:** set `AGENTIC_LIVE_TESTS=1` with `OPENAI_API_KEY`/`LANGCHAIN_API_KEY`
+  configured to run the same evaluation as a real `langsmith.evaluate()`
+  experiment, producing a visible Experiment under `LANGCHAIN_PROJECT`.
 """
 
-from conftest import initial_state, requires_langsmith_key, requires_openai_key
+from types import SimpleNamespace
+
+from conftest import (
+    initial_state,
+    requires_langsmith_key,
+    requires_live_tests,
+    requires_openai_key,
+)
 
 from app.agents.graph import agent_graph
 
@@ -75,9 +87,31 @@ def _ensure_dataset(client) -> str:
     return DATASET_NAME
 
 
+_EVALUATORS = [_blocked_matches, _tool_matches, _output_contains_expected]
+
+
+def test_langsmith_evaluation_offline(fake_planner) -> None:
+    """Exercise the dataset and evaluator wiring without LangSmith/OpenAI.
+
+    Runs `_target` over every `_EXAMPLES` row and applies each evaluator to
+    duck-typed run/example stand-ins, so a broken dataset shape or evaluator
+    contract fails in CI without needing real API keys.
+    """
+    scores = []
+    for example_data in _EXAMPLES:
+        run = SimpleNamespace(outputs=_target(example_data["inputs"]))
+        example = SimpleNamespace(outputs=example_data["outputs"])
+        for evaluator in _EVALUATORS:
+            scores.append(evaluator(run, example)["score"])
+
+    assert len(scores) == len(_EXAMPLES) * len(_EVALUATORS)
+    assert all(scores), f"Some evaluators failed: {scores}"
+
+
+@requires_live_tests
 @requires_openai_key
 @requires_langsmith_key
-def test_langsmith_evaluation_experiment() -> None:
+def test_langsmith_evaluation_experiment_live() -> None:
     """Run a real LangSmith evaluation experiment against a small fixed dataset."""
     from langsmith import Client, evaluate
 
@@ -87,7 +121,7 @@ def test_langsmith_evaluation_experiment() -> None:
     results = evaluate(
         _target,
         data=dataset_name,
-        evaluators=[_blocked_matches, _tool_matches, _output_contains_expected],
+        evaluators=_EVALUATORS,
         experiment_prefix="agentic-api-ci",
         client=client,
     )
