@@ -61,6 +61,23 @@ jobs:
           AGENTIC_LIVE_TESTS: "1"
         run: pytest -v
 
+  pip-audit:
+    name: Dependency vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Scan pinned dependencies for known vulnerabilities
+        run: pip-audit -r requirements.txt
+
   docker-build:
     runs-on: ubuntu-latest
     steps:

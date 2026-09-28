@@ -19,3 +19,6 @@ librt==0.15.0
 # Coverage reporting
 pytest-cov==7.1.0
 coverage==7.16.1
+
+# Dependency vulnerability scanning
+pip-audit==2.10.1
