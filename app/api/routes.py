@@ -82,13 +82,26 @@ def _serialize_update(update: dict[str, object]) -> dict[str, object]:
     return serialized
 
 
+# Fields carrying generated or untrusted text. They are withheld from the
+# live stream and released only after the graph — including the terminal
+# `output_guardrail` node — has completed (see `event_stream` below).
+_CONTENT_FIELDS = frozenset({"input_text", "messages", "plan", "tool_calls", "final_output"})
+
+
+def _split_update(update: dict[str, object]) -> tuple[dict[str, object], dict[str, object]]:
+    """Split a serialized node update into live metadata and gated content."""
+    meta = {k: v for k, v in update.items() if k not in _CONTENT_FIELDS}
+    content = {k: v for k, v in update.items() if k in _CONTENT_FIELDS}
+    return meta, content
+
+
 def _screen_serialized_update(update: dict[str, object]) -> dict[str, object]:
     """Apply the output guardrail to text fields inside a streamed state update.
 
-    SSE emits each node's update as it happens — before the graph's
-    `output_guardrail` node runs — so generated/untrusted fields (`plan`,
-    `final_output`, tool payloads, message contents) get the same OWASP
-    LLM02 screening here, with unsafe text replaced by a redaction marker.
+    Generated/untrusted fields (`plan`, `final_output`, tool payloads,
+    message contents) get the same OWASP LLM02 screening as the terminal
+    guardrail node, with unsafe text replaced by a redaction marker. Runs
+    as defense-in-depth on content flushed after the graph completes.
     """
     screened = dict(update)
     for key, value in update.items():
@@ -146,30 +159,42 @@ async def run_agent(payload: AgentRunRequest, request: Request) -> AgentRunRespo
     dependencies=[Depends(enforce_rate_limit), Depends(verify_api_key)],
 )
 async def stream_agent(payload: AgentRunRequest, request: Request) -> StreamingResponse:
-    """Execute the agent workflow, streaming each node's state update as it happens (SSE)."""
+    """Execute the agent workflow, streaming progress as it happens (SSE).
+
+    Hybrid gate semantics: each node emits a live *metadata* event
+    (completion signal, `blocked`/`output_flagged`, error markers), while
+    generated text (`plan`, `final_output`, tool payloads, message
+    contents, echoed input) is buffered and shipped only once the whole
+    graph — including the terminal `output_guardrail` node — has
+    completed. A mid-graph failure therefore withholds all generated
+    content instead of streaming half-verified text.
+    """
     graph = request.app.state.agent_graph
     session_id = payload.session_id or str(uuid.uuid4())
     config = _run_config(request, session_id, tags=["agentic-api", "stream"])
 
     async def event_stream() -> AsyncIterator[str]:
+        buffered: list[tuple[str, dict[str, object]]] = []
+        flagged = False
         try:
             async for update in graph.astream(
                 _initial_state(payload.input), config=config, stream_mode="updates"
             ):
                 for node_name, node_update in update.items():
-                    data = json.dumps(
-                        {
-                            "node": node_name,
-                            "update": _screen_serialized_update(
-                                _serialize_update(node_update)
-                            ),
-                        }
-                    )
-                    yield f"data: {data}\n\n"
+                    meta, content = _split_update(_serialize_update(node_update))
+                    if meta.get("output_flagged"):
+                        flagged = True
+                    yield f"data: {json.dumps({'node': node_name, 'update': meta})}\n\n"
+                    if content:
+                        buffered.append((node_name, content))
         except Exception:  # noqa: BLE001 - report streaming failure as an SSE event
             logger.exception("Agent graph streaming failed")
             yield f"event: error\ndata: {json.dumps({'detail': AGENT_EXECUTION_ERROR_MESSAGE})}\n\n"
             return
+        # If the output guardrail flagged the run, release only the gate's
+        # own update — it already carries the redacted replacement values.
+        for node_name, content in buffered[-1:] if flagged else buffered:
+            yield f"data: {json.dumps({'node': node_name, 'update': _screen_serialized_update(content)})}\n\n"
         yield f"event: done\ndata: {json.dumps({'session_id': session_id})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
