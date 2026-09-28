@@ -41,8 +41,20 @@ OUTPUT_BLOCKED_MESSAGE = (
     "The generated response was withheld because it failed a safety check."
 )
 
+OUTPUT_REDACTED_MESSAGE = "[redacted: failed output safety check]"
+
 # --- Error output node --------------------------------------------------------
 
 AGENT_BLOCKED_DEFAULT_REASON = "Request blocked by guardrails."
 
 AGENT_BLOCKED_OUTPUT_TEMPLATE = "Request blocked: {reason}"
+
+# --- Generic failure markers ---------------------------------------------------
+# Client-facing error strings never embed exception text: internal details are
+# logged server-side and only these stable markers reach the API response.
+
+PLANNER_ERROR_MESSAGE = "planner_error: planning step failed."
+
+TOOL_ERROR_TEMPLATE = "tool_error[{tool}]: tool execution failed."
+
+AGENT_EXECUTION_ERROR_MESSAGE = "Agent execution failed."

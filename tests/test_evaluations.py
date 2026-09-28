@@ -4,7 +4,7 @@ import os
 
 from conftest import initial_state, settings
 
-from app.agents.graph import agent_graph
+from app.agents.graph import agent_graph, execution_node
 from app.agents.guardrails import run_guardrails
 
 
@@ -83,6 +83,34 @@ class TestAgentGraph:
         body = response.json()
         assert body["blocked"] is True
         assert body["tool_calls"] == []
+
+    def test_planner_failure_returns_generic_error(self, monkeypatch) -> None:
+        """Exception text must not reach client-visible `errors` (logged server-side only)."""
+
+        class _FailingLLM:
+            def with_structured_output(self, schema: type) -> "_FailingLLM":
+                return self
+
+            def invoke(self, messages: list) -> None:
+                raise RuntimeError("sensitive internal detail")
+
+        monkeypatch.setattr("app.agents.graph._build_llm", _FailingLLM)
+        state = agent_graph.invoke(initial_state("What is 2 times 2?"))
+        assert state["errors"] == ["planner_error: planning step failed."]
+        assert "sensitive internal detail" not in str(state["errors"])
+
+    def test_tool_failure_returns_generic_error(self) -> None:
+        update = execution_node(
+            {
+                "tool_calls": [
+                    {"tool": "calculator", "input": "__import__('os')", "output": ""}
+                ],
+                "errors": [],
+                "plan": "",
+            }
+        )
+        assert update["errors"] == ["tool_error[calculator]: tool execution failed."]
+        assert "__import__" not in str(update["errors"])
 
 
 class TestLangSmithIntegration:

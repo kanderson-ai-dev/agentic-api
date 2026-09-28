@@ -27,7 +27,9 @@ from app.core.metrics import agent_blocked_requests_total, agent_tool_calls_tota
 from app.core.prompts import (
     AGENT_BLOCKED_DEFAULT_REASON,
     AGENT_BLOCKED_OUTPUT_TEMPLATE,
+    PLANNER_ERROR_MESSAGE,
     PLANNER_SYSTEM_PROMPT,
+    TOOL_ERROR_TEMPLATE,
 )
 
 logger = logging.getLogger(__name__)
@@ -119,12 +121,12 @@ def planner_node(state: AgentState) -> dict[str, object]:
                 AIMessage(content=result.plan),
             ],
         }
-    except Exception as exc:  # noqa: BLE001 - surface any planning failure as agent state
+    except Exception:  # noqa: BLE001 - surface any planning failure as agent state
         logger.exception("Planner node failed")
         return {
             "plan": "",
             "tool_calls": [],
-            "errors": [f"planner_error: {exc}"],
+            "errors": [PLANNER_ERROR_MESSAGE],
         }
 
 
@@ -138,10 +140,10 @@ def execution_node(state: AgentState) -> dict[str, object]:
             agent_tool_calls_total.labels(tool=call["tool"]).inc()
         try:
             output = run_tool(call["tool"], call["input"])
-        except Exception as exc:  # noqa: BLE001 - keep going on per-tool failures
+        except Exception:  # noqa: BLE001 - keep going on per-tool failures
             logger.exception("Tool execution failed for %s", call["tool"])
             output = ""
-            errors.append(f"tool_error[{call['tool']}]: {exc}")
+            errors.append(TOOL_ERROR_TEMPLATE.format(tool=call["tool"]))
         executed.append({"tool": call["tool"], "input": call["input"], "output": output})
 
     if executed:
