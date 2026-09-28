@@ -10,7 +10,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agents.graph import ToolCall
+from app.agents.guardrails import screen_output
 from app.api.dependencies import enforce_rate_limit, verify_api_key
+from app.core.prompts import AGENT_EXECUTION_ERROR_MESSAGE, OUTPUT_REDACTED_MESSAGE
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +82,33 @@ def _serialize_update(update: dict[str, object]) -> dict[str, object]:
     return serialized
 
 
+def _screen_serialized_update(update: dict[str, object]) -> dict[str, object]:
+    """Apply the output guardrail to text fields inside a streamed state update.
+
+    SSE emits each node's update as it happens — before the graph's
+    `output_guardrail` node runs — so generated/untrusted fields (`plan`,
+    `final_output`, tool payloads, message contents) get the same OWASP
+    LLM02 screening here, with unsafe text replaced by a redaction marker.
+    """
+    screened = dict(update)
+    for key, value in update.items():
+        if isinstance(value, str) and not screen_output(value).is_safe:
+            screened[key] = OUTPUT_REDACTED_MESSAGE
+        elif key in ("tool_calls", "messages") and isinstance(value, list):
+            screened[key] = [
+                {
+                    field: OUTPUT_REDACTED_MESSAGE
+                    if isinstance(field_value, str) and not screen_output(field_value).is_safe
+                    else field_value
+                    for field, field_value in item.items()
+                }
+                if isinstance(item, dict)
+                else item
+                for item in value
+            ]
+    return screened
+
+
 @router.post(
     "/agent/run",
     response_model=AgentRunResponse,
@@ -98,7 +127,7 @@ async def run_agent(payload: AgentRunRequest, request: Request) -> AgentRunRespo
         logger.exception("Agent graph execution failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Agent execution failed.",
+            detail=AGENT_EXECUTION_ERROR_MESSAGE,
         ) from exc
     return AgentRunResponse(
         plan=result["plan"],
@@ -129,12 +158,17 @@ async def stream_agent(payload: AgentRunRequest, request: Request) -> StreamingR
             ):
                 for node_name, node_update in update.items():
                     data = json.dumps(
-                        {"node": node_name, "update": _serialize_update(node_update)}
+                        {
+                            "node": node_name,
+                            "update": _screen_serialized_update(
+                                _serialize_update(node_update)
+                            ),
+                        }
                     )
                     yield f"data: {data}\n\n"
-        except Exception as exc:  # noqa: BLE001 - report streaming failure as an SSE event
+        except Exception:  # noqa: BLE001 - report streaming failure as an SSE event
             logger.exception("Agent graph streaming failed")
-            yield f"event: error\ndata: {json.dumps({'detail': str(exc)})}\n\n"
+            yield f"event: error\ndata: {json.dumps({'detail': AGENT_EXECUTION_ERROR_MESSAGE})}\n\n"
             return
         yield f"event: done\ndata: {json.dumps({'session_id': session_id})}\n\n"
 

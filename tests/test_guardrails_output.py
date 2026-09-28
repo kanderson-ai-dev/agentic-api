@@ -1,7 +1,11 @@
 """Unit tests for the output guardrail (OWASP LLM02 - Insecure Output Handling)."""
 
 from app.agents.guardrails import detect_system_prompt_leak, output_guardrail_node, screen_output
-from app.core.prompts import OUTPUT_BLOCKED_MESSAGE, PLANNER_SYSTEM_PROMPT
+from app.core.prompts import (
+    OUTPUT_BLOCKED_MESSAGE,
+    OUTPUT_REDACTED_MESSAGE,
+    PLANNER_SYSTEM_PROMPT,
+)
 
 
 class TestDetectSystemPromptLeak:
@@ -42,6 +46,25 @@ class TestOutputGuardrailNode:
         assert update["output_flagged"] is True
         assert update["final_output"] == OUTPUT_BLOCKED_MESSAGE
         assert any("output_guardrail_blocked" in err for err in update["errors"])
+
+    def test_redacts_plan_and_tool_payloads_when_flagged(self) -> None:
+        state = {
+            "final_output": f"Sure: {PLANNER_SYSTEM_PROMPT}",
+            "plan": PLANNER_SYSTEM_PROMPT,
+            "tool_calls": [
+                {
+                    "tool": "web_search",
+                    "input": "query text",
+                    "output": "untrusted snippet text",
+                }
+            ],
+            "errors": [],
+        }
+        update = output_guardrail_node(state)
+        assert update["output_flagged"] is True
+        assert update["plan"] == OUTPUT_REDACTED_MESSAGE
+        assert update["tool_calls"][0]["input"] == OUTPUT_REDACTED_MESSAGE
+        assert update["tool_calls"][0]["output"] == OUTPUT_REDACTED_MESSAGE
 
     def test_passes_through_safe_output(self) -> None:
         state = {"final_output": "calculator('2 + 2') -> 4", "errors": []}

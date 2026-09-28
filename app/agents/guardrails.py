@@ -20,6 +20,7 @@ from app.core.prompts import (
     GUARDRAIL_INJECTION_REASON_TEMPLATE,
     OUTPUT_BLOCKED_MESSAGE,
     OUTPUT_GUARDRAIL_ERROR_TEMPLATE,
+    OUTPUT_REDACTED_MESSAGE,
     PLANNER_SYSTEM_PROMPT,
 )
 
@@ -126,7 +127,10 @@ def detect_system_prompt_leak(text: str) -> str | None:
     """Return a reason if `text` reproduces a long enough fragment of the system prompt."""
     overlap = _ngrams(text, _SYSTEM_PROMPT_LEAK_NGRAM_SIZE) & _SYSTEM_PROMPT_NGRAMS
     if overlap:
-        return f"system prompt leak detected (shared phrase: {next(iter(overlap))!r})"
+        # The matching fragment is logged server-side only: returning it to the
+        # client would itself leak a verbatim slice of the system prompt.
+        logger.warning("System prompt leak detail: shared phrase %r", next(iter(overlap)))
+        return "system prompt leak detected"
     return None
 
 
@@ -147,13 +151,26 @@ def output_guardrail_node(state: AgentState) -> dict[str, object]:
 
     Runs after the execution node. If the output leaks the system prompt or
     reflects a previously-injected instruction, it is replaced with a
-    generic safe message and `output_flagged` is set to `True`.
+    generic safe message and `output_flagged` is set to `True`. The `plan`
+    and `tool_calls` payloads are redacted too: the API returns them
+    verbatim alongside `final_output`, so withholding only one field would
+    leave the flagged content reachable through the others.
     """
     result = screen_output(str(state.get("final_output", "")))
     if not result.is_safe:
         errors = list(state.get("errors", []))
         errors.append(OUTPUT_GUARDRAIL_ERROR_TEMPLATE.format(reason=result.reason))
+        redacted_calls = [
+            {
+                "tool": call["tool"],
+                "input": OUTPUT_REDACTED_MESSAGE,
+                "output": OUTPUT_REDACTED_MESSAGE,
+            }
+            for call in state.get("tool_calls", [])
+        ]
         return {
+            "plan": OUTPUT_REDACTED_MESSAGE,
+            "tool_calls": redacted_calls,
             "final_output": OUTPUT_BLOCKED_MESSAGE,
             "output_flagged": True,
             "errors": errors,
