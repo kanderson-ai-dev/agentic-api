@@ -36,7 +36,7 @@ The planner runs on OpenAI `gpt-4o-mini` with structured output, orchestrated as
 - 🛡️ **Never leaks its system prompt** — generated output is re-screened for prompt-leakage and reflected injected instructions before it reaches the client (OWASP LLM02). A flagged response is replaced with a safe message, not returned raw.
 - 🔁 **Transient failures don't become 500s** — the planner LLM call is wrapped in `tenacity` retry with exponential backoff (rate limits, timeouts, connection drops).
 - 🧠 **Real multi-turn memory** — conversation state persists per `session_id` in a SQLite checkpointer, so follow-up requests ("now double that") resolve against full history, not just the last message.
-- 📡 **SSE streaming out of the box** — `POST /agent/stream` emits one Server-Sent Event per graph node, so a UI can show "screening → planning → executing" live instead of a spinner.
+- 📡 **SSE streaming out of the box** — `POST /agent/stream` emits one Server-Sent Event per graph node, so a UI can show "screening → planning → executing" live instead of a spinner. Node metadata streams live while generated content is gated: it ships only after the output guardrail has passed, screened field-by-field.
 - 🔭 **Observable end to end** — every run is traced to LangSmith (tagged with the request's `X-Request-ID`), JSON structured logs share the same correlation id, and Prometheus exposes custom counters (`agent_tool_calls_total`, `agent_blocked_requests_total`) at `/metrics`.
 - 🧪 **CI is green with zero secrets** — the suite runs against a deterministic fake planner and an offline LangSmith evaluation, so a fork clones and passes with no API keys. An optional live job re-runs everything against real OpenAI/LangSmith when secrets exist.
 - ⛔ **Built-in rate limiting** — configurable per-minute request budget per API key/IP on the agent endpoints (`RATE_LIMIT_PER_MINUTE`), returning a clean `429` instead of a bill surprise.
@@ -219,6 +219,7 @@ All configuration is environment-based via `pydantic-settings`. See [`.env.examp
 | `CHECKPOINT_DB_PATH` | `data/checkpoints.sqlite` | Path to the SQLite database used for conversation memory. |
 | `AGENTIC_API_KEY` | — (unset) | If set, requires a matching `X-API-Key` header on `/agent/run` and `/agent/stream`. Left open if unset (local/dev friendly). |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Per-client request budget on `/agent/run` and `/agent/stream` (keyed by API key when present, otherwise IP). `0` disables enforcement. |
+| `SEARCH_PROVIDER` | `auto` | Web search provider for the `web_search` tool: `auto` or `duckduckgo` (keyless), `none` disables outbound search for fully offline runs. |
 
 ---
 
@@ -267,17 +268,27 @@ curl -N -X POST http://localhost:8000/api/v1/agent/stream \
 ```
 
 ```
-data: {"node": "guardrail", "update": {"input_text": "What is 3 times 3?", "blocked": false, "errors": []}}
+data: {"node": "guardrail", "update": {"blocked": false, "errors": []}}
 
-data: {"node": "planner", "update": {"plan": "Calculate the product of 3 and 3.", "tool_calls": [...]}}
+data: {"node": "planner", "update": {"errors": []}}
+
+data: {"node": "execution", "update": {"errors": []}}
+
+data: {"node": "output_guardrail", "update": {"output_flagged": false, "errors": []}}
+
+data: {"node": "guardrail", "update": {"input_text": "What is 3 times 3?"}}
+
+data: {"node": "planner", "update": {"plan": "Calculate the product of 3 and 3.", "tool_calls": [...], "messages": [...]}}
 
 data: {"node": "execution", "update": {"tool_calls": [...], "final_output": "calculator('3 * 3') -> 9"}}
-
-data: {"node": "output_guardrail", "update": {"output_flagged": false}}
 
 event: done
 data: {"session_id": "7150bce5-f4b8-4d25-9abb-c8e425d7190e"}
 ```
+
+Node metadata streams live (so a UI can show progress), but generated
+content is released only after the whole graph — including the terminal
+output guardrail — has passed; a flagged or failed run withholds it.
 
 ### Blocked request (prompt injection attempt)
 

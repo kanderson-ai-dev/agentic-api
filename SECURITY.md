@@ -17,7 +17,7 @@ architecture: **direct prompt injection against a paid LLM endpoint** and
 | Credential / internals leakage | Config, logs, error bodies | `SecretStr` fields with blank→`None` normalization; client-visible errors are stable generic markers (`planner_error`, `tool_error[…]`, generic 401/500/SSE bodies) while exception detail is logged server-side only; secrets accepted only via headers/env — never query strings |
 | Auth bypass / timing oracle | `/agent/*` endpoints | `X-API-Key` compared with `secrets.compare_digest` (constant time) when `AGENTIC_API_KEY` is configured; a single generic 401 |
 | Rate / cost abuse | `/agent/*` endpoints | Sliding-window `RateLimiter` keyed by API key or client IP runs *before* auth — floods are rejected before credential work (`app/core/ratelimit.py`) |
-| Secret exposure / supply chain via CI | GitHub Actions | The default test job injects zero secrets (fully offline suite); the `live-e2e` job runs only on manual/weekly triggers; `pip-audit` scans pinned dependencies |
+| Secret exposure / supply chain via CI | GitHub Actions | The default test job injects zero secrets (fully offline suite); the `live-e2e` job runs only on manual/weekly triggers; `pip-audit` scans pinned dependencies and `gitleaks` scans git history |
 
 ## OWASP LLM Top 10 mapping
 
@@ -36,8 +36,10 @@ architecture: **direct prompt injection against a paid LLM endpoint** and
   vulnerability scan.
 - **LLM05 Improper Output Handling** — `output_guardrail_node` gates
   `final_output` *and* redacts `plan`/`tool_calls` when a response is
-  flagged; SSE updates are screened per-field before they ship; responses
-  are rendered as plain data, never executed.
+  flagged; SSE streams node *metadata* live but releases generated
+  content only after the graph completes (withheld entirely when flagged
+  or failed mid-run); responses are rendered as plain data, never
+  executed.
 - **LLM06 Excessive Agency** — `Literal` tool allowlist via
   `with_structured_output`, a fixed tool registry, and a single
   non-looping graph pass; planner retries capped at 3 attempts.
@@ -84,8 +86,6 @@ architecture: **direct prompt injection against a paid LLM endpoint** and
   scoping would require real user authentication.
 - `web_search` egresses model-chosen query text to DuckDuckGo at request
   time; there is no arbitrary-URL fetch surface, but queries do leave the
-  perimeter.
-- SSE per-field screening re-checks generated text before each event
-  ships, but node updates are emitted before the graph's
-  `output_guardrail` runs — a just-in-time filter, not a gate.
-- Secret scanning (`gitleaks`) in CI is a documented next step.
+  perimeter. `SEARCH_PROVIDER=none` disables outbound search entirely for
+  offline/egress-restricted deployments; a keyed provider (e.g. Tavily)
+  with a data-processing agreement is the production-grade path.
