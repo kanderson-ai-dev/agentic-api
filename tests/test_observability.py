@@ -43,6 +43,19 @@ class TestRequestIdMiddleware:
         assert response.headers["x-request-id"] == "fixed-id-123"
 
 
+class TestSecurityHeaders:
+    def test_security_headers_present_on_responses(self, client) -> None:
+        response = client.get("/health/live")
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["referrer-policy"] == "no-referrer"
+
+    def test_security_headers_present_on_error_responses(self, client) -> None:
+        response = client.get("/api/v1/agent/nonexistent")
+        assert response.status_code == 404
+        assert response.headers["x-content-type-options"] == "nosniff"
+
+
 class TestMetrics:
     def test_metrics_endpoint_exposes_custom_and_http_counters(self, client) -> None:
         client.post(
