@@ -2,6 +2,7 @@
 
 import os
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -40,6 +41,9 @@ class Settings(BaseSettings):
 
     # Rate limiting (per client identity; 0 disables)
     rate_limit_per_minute: int = 60
+
+    # Web search tool ("none" disables outbound search for fully offline runs)
+    search_provider: Literal["auto", "duckduckgo", "none"] = "auto"
 
     @field_validator(
         "openai_api_key", "langchain_api_key", "agentic_api_key", mode="before"

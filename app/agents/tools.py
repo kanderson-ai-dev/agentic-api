@@ -8,6 +8,8 @@ from collections.abc import Callable
 from duckduckgo_search import DDGS
 from langchain_core.tools import BaseTool, tool
 
+from app.core.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 _SAFE_OPERATORS: dict[type, Callable[..., float]] = {
@@ -81,6 +83,8 @@ def web_search(query: str) -> str:
 
     Uses DuckDuckGo's search engine (no API key required) and returns the
     top results formatted as a short list of title/url/snippet entries.
+    Disabled entirely when `SEARCH_PROVIDER=none`, for fully offline or
+    egress-restricted deployments.
 
     Args:
         query: The search query.
@@ -90,6 +94,10 @@ def web_search(query: str) -> str:
     """
     if not query or not query.strip():
         raise ValueError("Web search tool requires a non-empty query.")
+    if get_settings().search_provider == "none":
+        return "Web search is disabled (SEARCH_PROVIDER=none)."
+    # "auto" resolves to DuckDuckGo — the only provider currently wired;
+    # a keyed provider would take precedence here when added.
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=5))

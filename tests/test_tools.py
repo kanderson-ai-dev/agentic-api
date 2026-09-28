@@ -61,6 +61,18 @@ class TestWebSearch:
             with pytest.raises(ValueError):
                 web_search.invoke("anything")
 
+    def test_disabled_provider_short_circuits_without_network(
+        self, monkeypatch
+    ) -> None:
+        """SEARCH_PROVIDER=none must not touch the network at all."""
+        from app.core.config import get_settings
+
+        monkeypatch.setattr(get_settings(), "search_provider", "none")
+        with patch("app.agents.tools.DDGS") as mock_ddgs_cls:
+            output = web_search.invoke("anything")
+        assert "disabled" in output.lower()
+        mock_ddgs_cls.assert_not_called()
+
 
 class TestRunTool:
     def test_none_returns_empty_string(self) -> None:
