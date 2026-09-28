@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🤖 Production-Grade Agentic AI Micro-Service
+# 🤖 Production-Grade Agentic AI API
 
 **Put a guardrailed, observable, multi-turn LLM agent behind a REST API — the service a client needs before an AI feature faces real users.**
 
