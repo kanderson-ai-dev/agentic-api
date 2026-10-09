@@ -15,6 +15,12 @@ agent_tool_calls_total = Counter(
     labelnames=("tool",),
 )
 
+agent_planner_runs_total = Counter(
+    "agent_planner_runs_total",
+    "Total number of planner invocations, labeled by prompt name and version.",
+    labelnames=("prompt_name", "prompt_version"),
+)
+
 
 def setup_instrumentator(app: FastAPI) -> None:
     """Instrument the FastAPI app with default HTTP metrics and expose `/metrics`."""

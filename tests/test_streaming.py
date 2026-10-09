@@ -23,6 +23,9 @@ class _BrokenGraph:
 class _LeakyPlannerLLM:
     """Planner stand-in whose plan reproduces the system prompt verbatim."""
 
+    def __init__(self, **_kwargs: object) -> None:
+        pass
+
     def with_structured_output(self, schema: type) -> "_LeakyPlannerLLM":
         return self
 
@@ -82,7 +85,8 @@ class TestAgentStream:
         planner_meta = next(
             p for p in payloads if p["node"] == "planner" and "plan" not in p["update"]
         )
-        assert planner_meta["update"] == {"errors": []}
+        assert planner_meta["update"]["errors"] == []
+        assert "prompt_version" in planner_meta["update"]
 
         gate_idx = max(
             i for i, p in enumerate(payloads) if p.get("node") == "output_guardrail"

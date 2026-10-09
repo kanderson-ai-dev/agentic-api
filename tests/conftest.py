@@ -27,6 +27,15 @@ requires_live_tests = pytest.mark.skipif(
     not LIVE_TESTS, reason="AGENTIC_LIVE_TESTS=1 not set; running in offline mode."
 )
 
+if not LIVE_TESTS:
+    # `app.main` re-exports these into os.environ at import time (before this
+    # module body runs); force tracing off at both levels so the offline suite
+    # never uploads traces, even when a local .env configures a real key.
+    settings.langchain_tracing_v2 = False
+    settings.langchain_api_key = None
+    os.environ["LANGCHAIN_TRACING_V2"] = "false"
+    os.environ.pop("LANGCHAIN_API_KEY", None)
+
 _ARITHMETIC_RE = re.compile(r"(\d+)\s*(times|multiplied by|plus|\+|\*|x)\s*(\d+)", re.I)
 _REPEAT_RE = re.compile(r"repeat this exactly:\s*(.+)", re.I | re.S)
 
@@ -58,7 +67,14 @@ def _fake_plan(messages: list) -> PlanResult:
 
 
 class _FakePlannerLLM:
-    """Stand-in for `ChatOpenAI` whose structured output is deterministic."""
+    """Stand-in for `ChatOpenAI` whose structured output is deterministic.
+
+    Accepts (and ignores) the `model`/`temperature` kwargs `_build_llm` is
+    called with, since planner_node now forwards the resolved prompt's values.
+    """
+
+    def __init__(self, **_kwargs: object) -> None:
+        pass
 
     def with_structured_output(self, schema: type) -> "_FakePlannerLLM":
         return self
@@ -103,4 +119,6 @@ def initial_state(input_text: str) -> dict[str, object]:
         "errors": [],
         "blocked": False,
         "output_flagged": False,
+        "prompt_version": "n/a",
+        "prompt_hash": "n/a",
     }

@@ -13,6 +13,7 @@ from app.agents.graph import ToolCall
 from app.agents.guardrails import screen_output
 from app.api.dependencies import enforce_rate_limit, verify_api_key
 from app.core.prompts import AGENT_EXECUTION_ERROR_MESSAGE, OUTPUT_REDACTED_MESSAGE
+from app.services.prompt_registry import PROMPT_VERSION_NA, resolve_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,8 @@ class AgentRunResponse(BaseModel):
     blocked: bool
     output_flagged: bool
     session_id: str
+    prompt_version: str
+    prompt_hash: str
 
 
 def _initial_state(input_text: str) -> dict[str, object]:
@@ -55,16 +58,28 @@ def _initial_state(input_text: str) -> dict[str, object]:
         "errors": [],
         "blocked": False,
         "output_flagged": False,
+        "prompt_version": PROMPT_VERSION_NA,
+        "prompt_hash": PROMPT_VERSION_NA,
     }
 
 
 def _run_config(request: Request, session_id: str, tags: list[str]) -> dict[str, object]:
-    """Build the LangGraph run config, correlating it with the request's `request_id`."""
+    """Build the LangGraph run config, correlating it with the request's `request_id`.
+
+    The resolved prompt's version/hash ride along as LangSmith metadata and a
+    `prompt:<name>@<version>` tag — never the prompt text itself.
+    """
     request_id = getattr(request.state, "request_id", None)
+    registry = getattr(request.app.state, "prompt_registry", None)
+    resolved = resolve_prompt("planner", registry)
     return {
         "configurable": {"thread_id": session_id},
-        "metadata": {"request_id": request_id},
-        "tags": tags,
+        "metadata": {
+            "request_id": request_id,
+            "prompt_version": resolved.version,
+            "prompt_hash": resolved.content_hash,
+        },
+        "tags": [*tags, f"prompt:{resolved.name}@{resolved.version}"],
     }
 
 
@@ -150,6 +165,8 @@ async def run_agent(payload: AgentRunRequest, request: Request) -> AgentRunRespo
         blocked=result.get("blocked", False),
         output_flagged=result.get("output_flagged", False),
         session_id=session_id,
+        prompt_version=result.get("prompt_version", PROMPT_VERSION_NA),
+        prompt_hash=result.get("prompt_hash", PROMPT_VERSION_NA),
     )
 
 

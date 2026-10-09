@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-from app.agents.graph import build_graph
+from app.agents.graph import build_graph, set_prompt_registry_provider
 from app.api.health import router as health_router
 from app.api.middleware import RequestIDMiddleware, SecurityHeadersMiddleware
 from app.api.routes import router as api_router
@@ -16,6 +16,7 @@ from app.core.config import configure_langchain_environment, get_settings
 from app.core.logging import configure_logging
 from app.core.metrics import setup_instrumentator
 from app.core.ratelimit import RateLimiter
+from app.services.prompt_registry import PromptRegistry
 
 settings = get_settings()
 configure_langchain_environment(settings)
@@ -41,6 +42,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     db_path = Path(settings.checkpoint_db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    app.state.prompt_registry = PromptRegistry(settings.prompts_dir)
+    app.state.prompt_registry.load()
+    set_prompt_registry_provider(lambda: app.state.prompt_registry)
+    if settings.prompt_admin_open:
+        logger.warning(
+            "PROMPT_ADMIN_OPEN=true — /prompts write endpoints accept requests "
+            "without an API key. Development mode only; do not deploy like this."
+        )
 
     async with AsyncSqliteSaver.from_conn_string(str(db_path)) as checkpointer:
         app.state.agent_graph = build_graph(checkpointer=checkpointer)

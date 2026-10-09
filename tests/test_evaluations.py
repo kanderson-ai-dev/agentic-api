@@ -72,6 +72,8 @@ class TestAgentGraph:
             "blocked",
             "output_flagged",
             "session_id",
+            "prompt_version",
+            "prompt_hash",
         }
 
     def test_agent_run_endpoint_blocks_injection(self, client) -> None:
@@ -88,6 +90,9 @@ class TestAgentGraph:
         """Exception text must not reach client-visible `errors` (logged server-side only)."""
 
         class _FailingLLM:
+            def __init__(self, **_kwargs: object) -> None:
+                pass
+
             def with_structured_output(self, schema: type) -> "_FailingLLM":
                 return self
 

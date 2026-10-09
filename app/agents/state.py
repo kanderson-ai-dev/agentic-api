@@ -26,3 +26,5 @@ class AgentState(TypedDict):
     errors: list[str]
     blocked: bool
     output_flagged: bool
+    prompt_version: str
+    prompt_hash: str

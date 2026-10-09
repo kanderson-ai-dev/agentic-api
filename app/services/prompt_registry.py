@@ -26,12 +26,20 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.agents.guardrails import detect_prompt_injection
+from app.core.prompts import PLANNER_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
 MAX_TEMPLATE_CHARS = 8000
 GENESIS_PREV_HASH = "0" * 64
 REGISTRY_FILENAME = "registry.json"
+PROMPT_HASH_LENGTH = 12
+FALLBACK_PROMPT_VERSION = "fallback"
+DEFAULT_PLANNER_MODEL = "gpt-4o-mini"
+DEFAULT_PLANNER_TEMPERATURE = 0.0
+# Marker reported for prompt_version/prompt_hash on paths that never resolve a
+# prompt (guardrail-blocked requests, planner failures).
+PROMPT_VERSION_NA = "n/a"
 
 _NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 _VERSION_PATTERN = re.compile(r"^v[0-9]{1,4}$")
@@ -231,6 +239,11 @@ class PromptRegistry:
         self._state: RegistryFile | None = None
         self._loaded = False
         self._artifact_cache: dict[tuple[str, str], PromptVersion | None] = {}
+
+    @property
+    def base_dir(self) -> Path:
+        """Root directory holding ``<name>/vN.yaml`` artifacts and registry.json."""
+        return self._base
 
     # -- loading -----------------------------------------------------------
 
@@ -523,8 +536,13 @@ class PromptRegistry:
         state.audit.append(entry)
 
     def verify_chain(self) -> AuditVerification:
-        """Recompute the whole chain; report the first broken index, if any."""
-        state = self._ensure_loaded()
+        """Recompute the whole chain; report the first broken index, if any.
+
+        Always re-reads ``registry.json`` so tampering with the file on disk is
+        detected rather than masked by the in-memory cache.
+        """
+        self.load()
+        state = self._state
         if state is None:
             return AuditVerification(
                 valid=False, entries=0, audit_root=None, broken_at=None
@@ -612,3 +630,47 @@ class PromptRegistry:
         tmp_path = path.with_name(f"{path.name}.{os.getpid()}.tmp")
         tmp_path.write_text(content, encoding="utf-8")
         os.replace(tmp_path, path)
+
+
+class ResolvedPrompt(BaseModel):
+    """Runtime view of a prompt: the artifact data plus its content hash."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    version: str
+    template: str
+    model: str
+    temperature: float
+    content_hash: str
+
+
+def resolve_prompt(name: str, registry: PromptRegistry | None) -> ResolvedPrompt:
+    """Resolve the promoted artifact for `name`, falling back to the constant.
+
+    Never raises: any registry failure yields the hardcoded fallback prompt
+    with ``version="fallback"`` so the agent always has something to plan with.
+    """
+    artifact: PromptVersion | None = None
+    if registry is not None:
+        try:
+            artifact = registry.get_promoted(name)
+        except Exception:  # noqa: BLE001 - resolution must never break the graph
+            logger.exception("Prompt registry lookup failed; using fallback prompt.")
+    if artifact is None:
+        return ResolvedPrompt(
+            name=name,
+            version=FALLBACK_PROMPT_VERSION,
+            template=PLANNER_SYSTEM_PROMPT,
+            model=DEFAULT_PLANNER_MODEL,
+            temperature=DEFAULT_PLANNER_TEMPERATURE,
+            content_hash=_sha256_text(PLANNER_SYSTEM_PROMPT)[:PROMPT_HASH_LENGTH],
+        )
+    return ResolvedPrompt(
+        name=name,
+        version=artifact.version,
+        template=artifact.template,
+        model=artifact.model,
+        temperature=artifact.temperature,
+        content_hash=_sha256_text(artifact.template)[:PROMPT_HASH_LENGTH],
+    )
