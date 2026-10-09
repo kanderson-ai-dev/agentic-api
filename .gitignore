@@ -30,3 +30,4 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+PLAN_upgrade.md
