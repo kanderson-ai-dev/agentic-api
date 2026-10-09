@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # Web search tool ("none" disables outbound search for fully offline runs)
     search_provider: Literal["auto", "duckduckgo", "none"] = "auto"
 
+    # Prompt registry (versioned prompt artifacts + audit chain)
+    prompts_dir: str = "prompts"
+    prompt_admin_open: bool = False
+
     @field_validator(
         "openai_api_key", "langchain_api_key", "agentic_api_key", mode="before"
     )

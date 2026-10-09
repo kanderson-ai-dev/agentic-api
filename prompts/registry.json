@@ -1,0 +1,43 @@
+{
+  "audit": [
+    {
+      "action": "create_candidate",
+      "actor": "system",
+      "hash": "f661f8d7b74d3c40da0969bea5336aa5f75e8783e52db580392d01166e693bc5",
+      "index": 0,
+      "metrics": {
+        "template_sha256": "c03f7baaef81fae2c36f7685c3870f2edad84e9985b09bee7fd34136c57cbdc7"
+      },
+      "name": "planner",
+      "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+      "reason": "Initial import of the hardcoded PLANNER_SYSTEM_PROMPT.",
+      "ts": "2026-10-09T20:24:13Z",
+      "version": "v1"
+    },
+    {
+      "action": "promote",
+      "actor": "system",
+      "hash": "8c2f828ebb0927e915384d2b177cc2db031767dde268b378e6c4e3ac19fe317e",
+      "index": 1,
+      "metrics": null,
+      "name": "planner",
+      "prev_hash": "f661f8d7b74d3c40da0969bea5336aa5f75e8783e52db580392d01166e693bc5",
+      "reason": "initial import",
+      "ts": "2026-10-09T20:24:13Z",
+      "version": "v1"
+    }
+  ],
+  "prompts": {
+    "planner": {
+      "promoted": "v1",
+      "versions": {
+        "v1": {
+          "created_at": "2026-10-09T20:24:13Z",
+          "hash": "c03f7baaef81fae2c36f7685c3870f2edad84e9985b09bee7fd34136c57cbdc7",
+          "status": "promoted"
+        }
+      }
+    }
+  },
+  "schema_version": 1
+}
