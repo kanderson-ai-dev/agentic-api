@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     langchain_api_key: SecretStr | None = None
     langchain_project: str = "agentic-api"
 
+    # Langfuse tracing (active only when both keys are set)
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: SecretStr | None = None
+    langfuse_base_url: str = "https://cloud.langfuse.com"
+
     # Conversation memory (LangGraph checkpointer)
     checkpoint_db_path: str = "data/checkpoints.sqlite"
 
@@ -50,7 +55,12 @@ class Settings(BaseSettings):
     prompt_admin_open: bool = False
 
     @field_validator(
-        "openai_api_key", "langchain_api_key", "agentic_api_key", mode="before"
+        "openai_api_key",
+        "langchain_api_key",
+        "agentic_api_key",
+        "langfuse_public_key",
+        "langfuse_secret_key",
+        mode="before",
     )
     @classmethod
     def _blank_secret_to_none(cls, value: object) -> object:
