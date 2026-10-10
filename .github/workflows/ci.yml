@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -36,6 +39,20 @@ jobs:
           LANGCHAIN_TRACING_V2: "false"
           LANGCHAIN_PROJECT: agentic-api-ci
         run: pytest -v --cov=app --cov-report=term-missing
+
+      # Offline gate: recomputes the audit hash chain and evaluates the
+      # promoted prompt against the committed dataset with the deterministic
+      # planner — a tampered registry.json or a metric regression fails the PR.
+      - name: Verify prompt registry and promotion gate (offline)
+        run: python -m app.services.prompt_eval --check
+
+      # The README coverage badge is updated manually with exactly this number.
+      - name: Report measured coverage (feeds the README badge)
+        id: coverage
+        run: |
+          TOTAL=$(coverage report | tail -n1 | awk '{print $NF}')
+          echo "coverage_total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "Measured coverage: **${TOTAL}** — update the README badge only with this number." >> "$GITHUB_STEP_SUMMARY"
 
   live-e2e:
     name: Live end-to-end (manual/weekly, requires secrets)

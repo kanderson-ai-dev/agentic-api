@@ -1,6 +1,8 @@
 .venv/
 venv/
 .env
+data/
+*.sqlite
 __pycache__/
 *.py[cod]
 .git/

@@ -8,7 +8,15 @@ services:
       - .env
     volumes:
       - agentic-api-data:/app/data
+      # Prompt-registry state survives container recreation in a named volume
+      # (initialized from the image's tracked `prompts/` on first use).
+      # Note: the volume shadows image updates to `prompts/` — after pulling a
+      # newer registry in the image, `docker compose down -v` (or promote
+      # in-container) reconciles it. Prefer a bind mount (`./prompts:/app/prompts`)
+      # if promotions should land back in the working tree for review/commit.
+      - agentic-api-prompts:/app/prompts
     restart: unless-stopped
 
 volumes:
   agentic-api-data:
+  agentic-api-prompts:
