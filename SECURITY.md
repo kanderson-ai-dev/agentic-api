@@ -17,6 +17,11 @@ architecture: **direct prompt injection against a paid LLM endpoint** and
 | Credential / internals leakage | Config, logs, error bodies | `SecretStr` fields with blank→`None` normalization; client-visible errors are stable generic markers (`planner_error`, `tool_error[…]`, generic 401/500/SSE bodies) while exception detail is logged server-side only; secrets accepted only via headers/env — never query strings |
 | Auth bypass / timing oracle | `/agent/*` endpoints | `X-API-Key` compared with `secrets.compare_digest` (constant time) when `AGENTIC_API_KEY` is configured; a single generic 401 |
 | Rate / cost abuse | `/agent/*` endpoints | Sliding-window `RateLimiter` keyed by API key or client IP runs *before* auth — floods are rejected before credential work (`app/core/ratelimit.py`) |
+| Unauthorized prompt changes | `/api/v1/prompts` write routes | Every write requires `X-API-Key` (constant-time compare); with no `AGENTIC_API_KEY` configured they return `503` unless `PROMPT_ADMIN_OPEN=true` is set explicitly (dev only, warned at startup); the audit `actor` is derived server-side, never client-supplied (`app/api/dependencies.py`) |
+| Path traversal via prompt name/version | `/prompts/{name}/…` and registry file I/O | Names match `^[a-z][a-z0-9_]{0,31}$`, versions `^v[0-9]{1,4}$` (else `422`), and resolved paths must stay inside `PROMPTS_DIR` (`app/services/prompt_registry.py`) |
+| Malicious or leaky candidate prompt | `POST /prompts/{name}/candidates` | Candidates are capped at 8 000 chars and rejected if they match input-guardrail patterns or contain secret-looking tokens (`sk-…`, `lsv2_…`, `Bearer …`) |
+| Silent tampering with prompt history | `prompts/registry.json` | Each lifecycle event is sealed into a SHA-256 hash chain; `GET /prompts/audit` re-reads the file and reports the first broken index. Tamper-*evident*, not tamper-proof — whoever can rewrite the whole file can recompute the chain, so keep it in git review |
+| Prompt text exposure | Logs, LangSmith, metrics, errors | Only `prompt_version` and `prompt_hash` (`sha256(template)[:12]`) are emitted; promotion errors are generic and metric labels are bounded to validated names/versions |
 | Secret exposure / supply chain via CI | GitHub Actions | The default test job injects zero secrets (fully offline suite); the `live-e2e` job runs only on manual/weekly triggers; `pip-audit` scans pinned dependencies and `gitleaks` scans git history |
 
 ## OWASP LLM Top 10 mapping
@@ -45,6 +50,9 @@ architecture: **direct prompt injection against a paid LLM endpoint** and
   non-looping graph pass; planner retries capped at 3 attempts.
 - **LLM07 System Prompt Leakage** — 8-gram overlap detection against
   `PLANNER_SYSTEM_PROMPT`; no secret is ever interpolated into prompts.
+- **LLM07 (prompt administration)** — prompt text never appears in logs,
+  traces, metrics, or error payloads; attribution uses version + hash only,
+  and candidate templates containing secret-like tokens are refused.
 - **LLM10 Unbounded Consumption** — 4000-character input cap, one LLM
   call per request, bounded retries, and per-client rate limiting before
   auth — spend per request is structurally bounded.
@@ -54,11 +62,19 @@ architecture: **direct prompt injection against a paid LLM endpoint** and
 - **A01 Broken Access Control** — `X-API-Key` enforcement on `/agent/*`
   when `AGENTIC_API_KEY` is configured; health and metrics stay open for
   orchestrators.
+  Prompt administration adds a stricter rule: write routes always need the
+  key, and return `503` (not open access) when no key is configured.
 - **A02 Cryptographic Failures** — constant-time `secrets.compare_digest`
   for key checks; `SecretStr` for every held secret.
 - **A03 Injection** — calculator evaluated through an AST allowlist (no
   `eval`/`exec`); input sanitization strips control characters and unicode
-  obfuscation; Pydantic v2 validates request bodies.
+  obfuscation; Pydantic v2 validates request bodies; prompt names/versions
+  are regex-validated and path-contained so they cannot reach the file
+  system outside `PROMPTS_DIR`.
+- **A08 Software and Data Integrity Failures** — prompt artifacts are
+  immutable once written, promotion is gated by a server-side A/B
+  evaluation, and the SHA-256 hash-chained audit log makes edits to
+  `registry.json` detectable.
 - **A05 Security Misconfiguration** — security headers middleware
   (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` on every
   response, errors included); non-root Docker image with a `HEALTHCHECK`;
@@ -84,6 +100,9 @@ architecture: **direct prompt injection against a paid LLM endpoint** and
   conversation memory: anyone holding a session id can resume that
   thread's history. Treat session ids as sensitive; per-user session
   scoping would require real user authentication.
+- The prompt registry is single-operator: `registry.json` is guarded by a
+  process-local lock and atomic writes, not a multi-process store, and the
+  "admin" is whoever holds `AGENTIC_API_KEY` (no per-user identity or roles).
 - `web_search` egresses model-chosen query text to DuckDuckGo at request
   time; there is no arbitrary-URL fetch surface, but queries do leave the
   perimeter. `SEARCH_PROVIDER=none` disables outbound search entirely for
