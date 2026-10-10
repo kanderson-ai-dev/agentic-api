@@ -37,6 +37,36 @@ async def verify_api_key(x_api_key: str | None = Header(default=None, alias=API_
         )
 
 
+async def require_prompt_admin(
+    x_api_key: str | None = Header(default=None, alias=API_KEY_HEADER),
+) -> None:
+    """Require `X-API-Key` on prompt administration writes — always.
+
+    Unlike `verify_api_key`, this never silently opens up: when
+    `AGENTIC_API_KEY` is unset the endpoints return 503, unless
+    `PROMPT_ADMIN_OPEN=true` explicitly opts into dev-mode open access
+    (logged loudly at startup).
+
+    Raises:
+        HTTPException: 401 on a missing/mismatched key, 503 when prompt
+            administration is disabled.
+    """
+    settings = get_settings()
+    if settings.agentic_api_key is None:
+        if settings.prompt_admin_open:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="prompt administration disabled: configure AGENTIC_API_KEY",
+        )
+    expected = settings.agentic_api_key.get_secret_value()
+    if not x_api_key or not secrets.compare_digest(x_api_key, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API key.",
+        )
+
+
 _FALLBACK_LIMITER = RateLimiter()
 
 

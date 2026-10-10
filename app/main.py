@@ -11,6 +11,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from app.agents.graph import build_graph, set_prompt_registry_provider
 from app.api.health import router as health_router
 from app.api.middleware import RequestIDMiddleware, SecurityHeadersMiddleware
+from app.api.prompts import router as prompts_router
 from app.api.routes import router as api_router
 from app.core.config import configure_langchain_environment, get_settings
 from app.core.logging import configure_logging
@@ -71,6 +72,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
 app.include_router(api_router, prefix=settings.api_prefix)
+app.include_router(prompts_router, prefix=settings.api_prefix)
 app.include_router(health_router)
 
 setup_instrumentator(app)
