@@ -10,6 +10,7 @@ architecture: **direct prompt injection against a paid LLM endpoint** and
 | Threat | Surface | Control |
 |---|---|---|
 | Direct prompt injection | `input` on `POST /api/v1/agent/run` and `/agent/stream` | `guardrail_node` is the graph's first node — NFKC normalization, control-character stripping, and injection-pattern screening run *before* any LLM call; blocked input burns zero tokens (`app/agents/guardrails.py`) |
+| Guardrail evasion intel | `errors` / `final_output` on blocked requests (both HTTP and SSE) | Blocked responses return only the generic `guardrail_blocked: input rejected by safety policy` — the matched regex stays in the server-side structured log, so clients cannot enumerate the detection patterns (`tests/test_evaluations.py`) |
 | Indirect prompt injection | `web_search` snippets (untrusted web content) | Tool output never re-enters the planner's message context — it is assembled into `final_output` and screened by `output_guardrail_node`, treated strictly as *data* |
 | System prompt leakage | `final_output` echoing `PLANNER_SYSTEM_PROMPT` or a reflected injected instruction | `detect_system_prompt_leak` (8-gram overlap against the system prompt) plus pattern re-screening; a flagged response withholds the whole generated surface — `final_output`, `plan`, `tool_calls` payloads, and streamed SSE fields are all redacted (OWASP LLM02/LLM07) |
 | Code execution via tool input | `calculator(expression)` | `ast.parse` + operator allowlist — numeric literals and `+ - * / **` only; there is no `eval`/`exec` path (`app/agents/tools.py`) |

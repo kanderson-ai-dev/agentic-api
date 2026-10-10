@@ -375,8 +375,8 @@ curl -s -X POST http://localhost:8000/api/v1/agent/run \
 {
   "plan": "",
   "tool_calls": [],
-  "final_output": "Request blocked: guardrail_blocked: matched suspicious pattern: ignore\\s+(all\\s+)?(previous|prior|above)\\s+instructions",
-  "errors": ["guardrail_blocked: matched suspicious pattern: ignore\\s+(all\\s+)?(previous|prior|above)\\s+instructions"],
+  "final_output": "Request blocked: guardrail_blocked: input rejected by safety policy",
+  "errors": ["guardrail_blocked: input rejected by safety policy"],
   "blocked": true,
   "output_flagged": false,
   "session_id": "8a70ef34-220d-4ece-a6bb-7fae26b262b9",

@@ -29,7 +29,13 @@ PLANNER_SYSTEM_PROMPT = (
 
 GUARDRAIL_EMPTY_INPUT_REASON = "empty input"
 
+# Server-side log detail only — never returned to clients.
 GUARDRAIL_INJECTION_REASON_TEMPLATE = "matched suspicious pattern: {pattern}"
+
+# Client-facing reasons are stable and generic: the matched pattern would
+# otherwise tell an attacker exactly which regex to evade.
+GUARDRAIL_INJECTION_REASON = "input rejected by safety policy"
+OUTPUT_GUARDRAIL_INJECTION_REASON = "output rejected by safety policy"
 
 GUARDRAIL_BLOCKED_ERROR_TEMPLATE = "guardrail_blocked: {reason}"
 

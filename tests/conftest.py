@@ -108,6 +108,19 @@ def client():
         yield test_client
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter(client) -> None:
+    """Clear the app-level rate limiter before each test.
+
+    All TestClient requests share the `testclient` IP key, so hits would
+    otherwise accumulate across the whole suite and make later tests
+    order-dependent.
+    """
+    limiter = getattr(app.state, "rate_limiter", None)
+    if limiter is not None:
+        limiter.clear()
+
+
 def initial_state(input_text: str) -> dict[str, object]:
     """Build a fresh initial AgentState payload for direct graph invocations."""
     return {

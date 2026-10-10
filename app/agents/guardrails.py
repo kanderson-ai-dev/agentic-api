@@ -17,9 +17,11 @@ from app.agents.state import AgentState
 from app.core.prompts import (
     GUARDRAIL_BLOCKED_ERROR_TEMPLATE,
     GUARDRAIL_EMPTY_INPUT_REASON,
+    GUARDRAIL_INJECTION_REASON,
     GUARDRAIL_INJECTION_REASON_TEMPLATE,
     OUTPUT_BLOCKED_MESSAGE,
     OUTPUT_GUARDRAIL_ERROR_TEMPLATE,
+    OUTPUT_GUARDRAIL_INJECTION_REASON,
     OUTPUT_REDACTED_MESSAGE,
     PLANNER_SYSTEM_PROMPT,
 )
@@ -73,7 +75,11 @@ def sanitize_input(raw_input: str) -> str:
 
 
 def detect_prompt_injection(text: str) -> str | None:
-    """Return a human-readable reason if the text matches a known injection pattern."""
+    """Return the matched-pattern detail if `text` hits a known injection pattern.
+
+    The returned string embeds the regex source: it is intended for
+    server-side logs and truthiness checks, never for client-facing reasons.
+    """
     for pattern in _INJECTION_PATTERNS:
         if pattern.search(text):
             return GUARDRAIL_INJECTION_REASON_TEMPLATE.format(pattern=pattern.pattern)
@@ -88,10 +94,16 @@ def run_guardrails(raw_input: str) -> GuardrailResult:
         )
 
     sanitized = sanitize_input(raw_input)
-    reason = detect_prompt_injection(sanitized)
-    if reason:
-        logger.warning("Prompt injection blocked: %s", reason)
-        return GuardrailResult(is_safe=False, sanitized_input=sanitized, reason=reason)
+    detail = detect_prompt_injection(sanitized)
+    if detail:
+        # The pattern detail stays in the server-side log; the client only
+        # sees the generic `reason` (F1 — no regex disclosure).
+        logger.warning("Prompt injection blocked: %s", detail)
+        return GuardrailResult(
+            is_safe=False,
+            sanitized_input=sanitized,
+            reason=GUARDRAIL_INJECTION_REASON,
+        )
     return GuardrailResult(is_safe=True, sanitized_input=sanitized, reason=None)
 
 
@@ -139,10 +151,18 @@ def screen_output(text: str) -> GuardrailResult:
     if not text:
         return GuardrailResult(is_safe=True, sanitized_input=text)
 
-    reason = detect_prompt_injection(text) or detect_system_prompt_leak(text)
-    if reason:
-        logger.warning("Output guardrail blocked: %s", reason)
-        return GuardrailResult(is_safe=False, sanitized_input=text, reason=reason)
+    detail = detect_prompt_injection(text)
+    if detail:
+        logger.warning("Output guardrail blocked (reflected injection): %s", detail)
+        return GuardrailResult(
+            is_safe=False,
+            sanitized_input=text,
+            reason=OUTPUT_GUARDRAIL_INJECTION_REASON,
+        )
+    leak = detect_system_prompt_leak(text)
+    if leak:
+        logger.warning("Output guardrail blocked: %s", leak)
+        return GuardrailResult(is_safe=False, sanitized_input=text, reason=leak)
     return GuardrailResult(is_safe=True, sanitized_input=text)
 
 

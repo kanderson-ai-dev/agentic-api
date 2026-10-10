@@ -162,7 +162,10 @@ def _build_llm(
 def _invoke_planner(llm: Runnable, messages: list[AnyMessage]) -> PlanResult:
     """Invoke the structured-output planner LLM, retrying on transient OpenAI errors."""
     result = llm.invoke(messages)
-    assert isinstance(result, PlanResult)
+    if not isinstance(result, PlanResult):
+        raise TypeError(
+            f"planner returned {type(result).__name__}, expected PlanResult"
+        )
     return result
 
 
