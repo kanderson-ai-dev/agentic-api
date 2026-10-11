@@ -135,7 +135,7 @@ class TestAgentGraph:
             def with_structured_output(self, schema: type) -> "_FailingLLM":
                 return self
 
-            def invoke(self, messages: list) -> None:
+            def invoke(self, messages: list, **_kwargs: object) -> None:
                 raise RuntimeError("sensitive internal detail")
 
         monkeypatch.setattr("app.agents.graph._build_llm", _FailingLLM)
@@ -153,7 +153,7 @@ class TestAgentGraph:
             def with_structured_output(self, schema: type) -> "_WrongTypeLLM":
                 return self
 
-            def invoke(self, messages: list) -> str:
+            def invoke(self, messages: list, **_kwargs: object) -> str:
                 return "not a PlanResult"
 
         monkeypatch.setattr("app.agents.graph._build_llm", _WrongTypeLLM)
@@ -164,7 +164,7 @@ class TestAgentGraph:
         """F6: explicit type check, not a strippable `assert` (python -O safe)."""
 
         class _BadLLM:
-            def invoke(self, messages: list) -> str:
+            def invoke(self, messages: list, **_kwargs: object) -> str:
                 return "oops"
 
         with pytest.raises(TypeError):

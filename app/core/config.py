@@ -27,8 +27,9 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: SecretStr | None = None
 
-    # LangSmith / LangChain tracing
-    langchain_tracing_v2: bool = True
+    # LangSmith / LangChain tracing (legacy opt-in; off by default so it can
+    # never silently burn quota — enable explicitly to use it)
+    langchain_tracing_v2: bool = False
     langchain_endpoint: str = "https://api.smith.langchain.com"
     langchain_api_key: SecretStr | None = None
     langchain_project: str = "agentic-api"

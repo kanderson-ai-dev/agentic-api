@@ -22,7 +22,7 @@ architecture: **direct prompt injection against a paid LLM endpoint** and
 | Path traversal via prompt name/version | `/prompts/{name}/…` and registry file I/O | Names match `^[a-z][a-z0-9_]{0,31}$`, versions `^v[0-9]{1,4}$` (else `422`), and resolved paths must stay inside `PROMPTS_DIR` (`app/services/prompt_registry.py`) |
 | Malicious or leaky candidate prompt | `POST /prompts/{name}/candidates` | Candidates are capped at 8 000 chars and rejected if they match input-guardrail patterns or contain secret-looking tokens (`sk-…`, `lsv2_…`, `Bearer …`) |
 | Silent tampering with prompt history | `prompts/registry.json` | Each lifecycle event is sealed into a SHA-256 hash chain; `GET /prompts/audit` re-reads the file and reports the first broken index. Tamper-*evident*, not tamper-proof — whoever can rewrite the whole file can recompute the chain, so keep it in git review |
-| Prompt text exposure | Logs, LangSmith, metrics, errors | Only `prompt_version` and `prompt_hash` (`sha256(template)[:12]`) are emitted; promotion errors are generic and metric labels are bounded to validated names/versions |
+| Prompt text exposure | Logs, traces, metrics, errors | Only `prompt_version` and `prompt_hash` (`sha256(template)[:12]`) are emitted; the Langfuse client additionally masks every served template to a version/hash placeholder before export; promotion errors are generic and metric labels are bounded to validated names/versions |
 | Secret exposure / supply chain via CI | GitHub Actions | The default test job injects zero secrets (fully offline suite); the `live-e2e` job runs only on manual/weekly triggers; `pip-audit` scans pinned dependencies and `gitleaks` scans git history |
 
 ## OWASP LLM Top 10 mapping
@@ -54,6 +54,10 @@ architecture: **direct prompt injection against a paid LLM endpoint** and
 - **LLM07 (prompt administration)** — prompt text never appears in logs,
   traces, metrics, or error payloads; attribution uses version + hash only,
   and candidate templates containing secret-like tokens are refused.
+- **Trace data residency** — Langfuse tracing is opt-in; when enabled, user
+  inputs and model outputs leave the process for `LANGFUSE_BASE_URL`. Choose
+  the data region (EU/US/JP/HIPAA) that satisfies your compliance posture —
+  prompts themselves are masked before export regardless.
 - **LLM10 Unbounded Consumption** — 4000-character input cap, one LLM
   call per request, bounded retries, and per-client rate limiting before
   auth — spend per request is structurally bounded.
@@ -84,7 +88,7 @@ architecture: **direct prompt injection against a paid LLM endpoint** and
 - **A07 Identification/Auth Failures** — one generic 401 ("Invalid or
   missing API key") — no oracle distinguishing absent vs. wrong keys.
 - **A09 Logging Failures** — structured `structlog` output correlated by
-  `X-Request-ID` end to end (HTTP logs ↔ LangSmith run metadata);
+  `X-Request-ID` end to end (HTTP logs ↔ Langfuse trace metadata);
   guardrail blocks and tool failures are logged; Prometheus exposes
   `agent_blocked_requests_total` / `agent_tool_calls_total`.
 

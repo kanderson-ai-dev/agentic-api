@@ -182,7 +182,7 @@ class _DeterministicPlanner:
     def with_structured_output(self, schema: type) -> _DeterministicPlanner:
         return self
 
-    def invoke(self, messages: list[Any]) -> PlanResult:
+    def invoke(self, messages: list[Any], **_kwargs: Any) -> PlanResult:
         system = str(getattr(messages[0], "content", "")) if messages else ""
         text = str(getattr(messages[-1], "content", "")) if messages else ""
         if _NO_TOOLS_MARKER in system.lower():

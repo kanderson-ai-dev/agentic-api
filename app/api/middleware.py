@@ -16,7 +16,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     Generates (or propagates, if the caller already sent one) an
     `X-Request-ID` header so that every log line emitted while handling a
     request is tagged with the same id, and so the same id can be attached
-    as LangSmith run metadata to correlate infra logs with LLM traces.
+    as trace metadata to correlate infra logs with LLM traces.
     """
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:

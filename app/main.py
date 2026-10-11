@@ -17,11 +17,13 @@ from app.core.config import configure_langchain_environment, get_settings
 from app.core.logging import configure_logging
 from app.core.metrics import setup_instrumentator
 from app.core.ratelimit import RateLimiter
+from app.core.tracing import configure_langfuse_environment, shutdown_tracing
 from app.services.prompt_registry import PromptRegistry
 
 settings = get_settings()
 configure_langchain_environment(settings)
 configure_logging(settings)
+configure_langfuse_environment(settings)
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.rate_limiter = RateLimiter()
         yield
 
+    shutdown_tracing()
     logger.info("Shutting down %s", settings.app_name)
 
 

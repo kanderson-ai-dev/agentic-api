@@ -12,10 +12,14 @@ from pydantic import BaseModel, Field
 from app.agents.graph import ToolCall
 from app.agents.guardrails import screen_output
 from app.api.dependencies import enforce_rate_limit, verify_api_key
+from app.core.config import get_settings
 from app.core.prompts import AGENT_EXECUTION_ERROR_MESSAGE, OUTPUT_REDACTED_MESSAGE
+from app.core.tracing import build_trace_callbacks
 from app.services.prompt_registry import PROMPT_VERSION_NA, resolve_prompt
 
 logger = logging.getLogger(__name__)
+
+settings = get_settings()
 
 router = APIRouter()
 
@@ -66,20 +70,26 @@ def _initial_state(input_text: str) -> dict[str, object]:
 def _run_config(request: Request, session_id: str, tags: list[str]) -> dict[str, object]:
     """Build the LangGraph run config, correlating it with the request's `request_id`.
 
-    The resolved prompt's version/hash ride along as LangSmith metadata and a
-    `prompt:<name>@<version>` tag — never the prompt text itself.
+    The resolved prompt's version/hash ride along as trace metadata and a
+    `prompt:<name>@<version>` tag — never the prompt text itself. The Langfuse
+    handler is attached only when configured; `langfuse_*` metadata keys carry
+    the session and tags into the trace.
     """
     request_id = getattr(request.state, "request_id", None)
     registry = getattr(request.app.state, "prompt_registry", None)
     resolved = resolve_prompt("planner", registry)
+    tag_list = [*tags, f"prompt:{resolved.name}@{resolved.version}"]
     return {
         "configurable": {"thread_id": session_id},
+        "callbacks": build_trace_callbacks(settings),
         "metadata": {
             "request_id": request_id,
             "prompt_version": resolved.version,
             "prompt_hash": resolved.content_hash,
+            "langfuse_session_id": session_id,
+            "langfuse_tags": tag_list,
         },
-        "tags": [*tags, f"prompt:{resolved.name}@{resolved.version}"],
+        "tags": tag_list,
     }
 
 

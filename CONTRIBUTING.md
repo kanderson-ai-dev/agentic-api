@@ -27,8 +27,9 @@ pytest -v             # full test suite
 ```
 
 All three must pass before submitting a PR. Tests that need a real
-`OPENAI_API_KEY` / `LANGCHAIN_API_KEY` are automatically skipped when those
-secrets are not configured, so the suite runs green with zero secrets.
+`OPENAI_API_KEY` / `LANGFUSE_*` / `LANGCHAIN_API_KEY` are automatically skipped
+when those secrets are not configured, so the suite runs green with zero
+secrets.
 
 ## Proposing a Prompt Change
 

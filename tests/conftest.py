@@ -35,6 +35,15 @@ if not LIVE_TESTS:
     settings.langchain_api_key = None
     os.environ["LANGCHAIN_TRACING_V2"] = "false"
     os.environ.pop("LANGCHAIN_API_KEY", None)
+    # Same guard for Langfuse: credentials never reach os.environ, and the
+    # cached client/template state is reset so no handler can be built.
+    settings.langfuse_public_key = None
+    settings.langfuse_secret_key = None
+    for var in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL"):
+        os.environ.pop(var, None)
+    from app.core.tracing import _reset_for_tests
+
+    _reset_for_tests()
 
 _ARITHMETIC_RE = re.compile(r"(\d+)\s*(times|multiplied by|plus|\+|\*|x)\s*(\d+)", re.I)
 _REPEAT_RE = re.compile(r"repeat this exactly:\s*(.+)", re.I | re.S)
@@ -79,7 +88,7 @@ class _FakePlannerLLM:
     def with_structured_output(self, schema: type) -> "_FakePlannerLLM":
         return self
 
-    def invoke(self, messages: list) -> PlanResult:
+    def invoke(self, messages: list, **_kwargs: object) -> PlanResult:
         return _fake_plan(messages)
 
 

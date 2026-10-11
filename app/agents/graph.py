@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 import openai
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
-from langchain_core.runnables import Runnable
+from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
@@ -39,6 +39,7 @@ from app.core.prompts import (
     PLANNER_ERROR_MESSAGE,
     TOOL_ERROR_TEMPLATE,
 )
+from app.core.tracing import register_prompt_template
 from app.services.prompt_registry import (
     DEFAULT_PLANNER_MODEL,
     DEFAULT_PLANNER_TEMPERATURE,
@@ -159,9 +160,11 @@ def _build_llm(
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
 )
-def _invoke_planner(llm: Runnable, messages: list[AnyMessage]) -> PlanResult:
+def _invoke_planner(
+    llm: Runnable, messages: list[AnyMessage], config: RunnableConfig | None = None
+) -> PlanResult:
     """Invoke the structured-output planner LLM, retrying on transient OpenAI errors."""
-    result = llm.invoke(messages)
+    result = llm.invoke(messages, config=config)
     if not isinstance(result, PlanResult):
         raise TypeError(
             f"planner returned {type(result).__name__}, expected PlanResult"
@@ -169,7 +172,7 @@ def _invoke_planner(llm: Runnable, messages: list[AnyMessage]) -> PlanResult:
     return result
 
 
-def planner_node(state: AgentState) -> dict[str, object]:
+def planner_node(state: AgentState, config: RunnableConfig) -> dict[str, object]:
     """Use an LLM to turn the user input (plus conversation history) into a plan.
 
     The prompt artifact is resolved through `resolve_prompt` — either the
@@ -184,6 +187,7 @@ def planner_node(state: AgentState) -> dict[str, object]:
     agent_planner_runs_total.labels(
         prompt_name=resolved.name, prompt_version=resolved.version
     ).inc()
+    register_prompt_template(resolved.name, resolved.version, resolved.template)
     factory = (
         override.llm_factory
         if override is not None and override.llm_factory is not None
@@ -204,6 +208,7 @@ def planner_node(state: AgentState) -> dict[str, object]:
                     *history,
                     HumanMessage(content=state["input_text"]),
                 ],
+                config,
             )
             tool_calls: list[ToolCall] = [
                 {"tool": call.tool, "input": call.input, "output": ""}

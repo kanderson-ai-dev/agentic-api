@@ -29,7 +29,7 @@ class _LeakyPlannerLLM:
     def with_structured_output(self, schema: type) -> "_LeakyPlannerLLM":
         return self
 
-    def invoke(self, messages: list) -> PlanResult:
+    def invoke(self, messages: list, **_kwargs: object) -> PlanResult:
         return PlanResult(plan=PLANNER_SYSTEM_PROMPT, tool_calls=[])
 
 

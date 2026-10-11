@@ -28,7 +28,7 @@ flowchart LR
     Registry[("Prompt Registry<br/>prompts/&lt;name&gt;/vN.yaml<br/>+ registry.json")] -->|"promoted template,<br/>model, temperature"| Planner
     Registry --- Audit[("hash-chained<br/>audit log")]
     Planner <-.->|"checkpoints"| SQLite[("SQLite<br/>per session_id")]
-    Planner -.->|"traces + prompt tag"| LangSmith[("LangSmith")]
+    Planner -.->|"traces + prompt tag"| Langfuse[("Langfuse")]
     Edge -.->|"JSON logs"| Structlog[("structlog")]
     Edge -.->|"counters"| Prom[("Prometheus /metrics")]
 ```
@@ -56,9 +56,9 @@ The planner runs on OpenAI `gpt-4o-mini` with structured output, orchestrated as
 - 🔁 **Transient failures don't become 500s** — the planner LLM call is wrapped in `tenacity` retry with exponential backoff (rate limits, timeouts, connection drops).
 - 🧠 **Real multi-turn memory** — conversation state persists per `session_id` in a SQLite checkpointer, so follow-up requests ("now double that") resolve against full history, not just the last message.
 - 📡 **SSE streaming out of the box** — `POST /agent/stream` emits one Server-Sent Event per graph node, so a UI can show "screening → planning → executing" live instead of a spinner. Node metadata streams live while generated content is gated: it ships only after the output guardrail has passed, screened field-by-field.
-- 🔭 **Observable end to end** — every run is traced to LangSmith (tagged with the request's `X-Request-ID` and the `prompt:<name>@<version>` it served), JSON structured logs share the same correlation id, and Prometheus exposes custom counters (`agent_tool_calls_total`, `agent_blocked_requests_total`, `agent_planner_runs_total`) at `/metrics`.
+- 🔭 **Observable end to end** — every run can be traced to Langfuse (tagged with the request's `X-Request-ID` and the `prompt:<name>@<version>` it served), JSON structured logs share the same correlation id, and Prometheus exposes custom counters (`agent_tool_calls_total`, `agent_blocked_requests_total`, `agent_planner_runs_total`) at `/metrics`.
 - 🗂️ **Prompts are versioned product artifacts, not strings in code** — the planner's system prompt lives in `prompts/planner/vN.yaml`, promoted only after a deterministic A/B evaluation gate passes, with every lifecycle change sealed into a SHA-256 hash-chained audit log. Every response reports exactly which `prompt_version`/`prompt_hash` produced it, and `/api/v1/prompts` exposes diff/audit/promote/rollback for review.
-- 🧪 **CI is green with zero secrets** — the suite runs against a deterministic fake planner and an offline LangSmith evaluation, so a fork clones and passes with no API keys. An optional live job re-runs everything against real OpenAI/LangSmith when secrets exist.
+- 🧪 **CI is green with zero secrets** — the suite runs against a deterministic fake planner and an offline prompt evaluation gate, so a fork clones and passes with no API keys. An optional live job re-runs everything against real OpenAI/Langfuse when secrets exist.
 - ⛔ **Built-in rate limiting** — configurable per-minute request budget per API key/IP on the agent endpoints (`RATE_LIMIT_PER_MINUTE`), returning a clean `429` instead of a bill surprise.
 - 🔑 **Auth when you need it** — optional `X-API-Key` enforcement on agent endpoints; health and metrics stay open for orchestrators.
 - 🐳 **Production-shaped Docker** — non-root image with a `HEALTHCHECK`, plus `docker-compose.yml` with a persistent volume for conversation memory.
@@ -93,7 +93,7 @@ curl -s -X POST http://localhost:8000/api/v1/agent/run \
 
 ## 🚀 Quickstart (under 2 minutes)
 
-Requires Python 3.10+ and an [OpenAI API key](https://platform.openai.com/api-keys) (a [LangSmith key](https://smith.langchain.com/) is optional, needed only for tracing/evaluation).
+Requires Python 3.10+ and an [OpenAI API key](https://platform.openai.com/api-keys) (a [Langfuse project](https://langfuse.com/) key pair is optional, needed only for tracing).
 
 ```bash
 # 1. Clone and enter the project
@@ -125,9 +125,9 @@ The agent runs as a compiled LangGraph state machine — the diagram above is th
 4. **Planner node** resolves the promoted prompt from the **prompt registry** (template, model, and temperature come from the versioned artifact — `prompts/planner/vN.yaml`), then calls `ChatOpenAI` with a structured-output schema plus the `session_id` conversation history, retrying transient OpenAI errors via `tenacity`.
 5. **Execution node** runs each requested tool (`calculator`, `web_search`, `echo`) with per-tool error isolation.
 6. **Output guardrail** screens `final_output` for system-prompt leakage or reflected injection before returning.
-7. Conversation state checkpoints to SQLite; every LLM call traces to LangSmith under the request's `X-Request-ID` and the `prompt:planner@<version>` tag.
+7. Conversation state checkpoints to SQLite; every LLM call traces to Langfuse (when configured) under the request's `X-Request-ID` and the `prompt:planner@<version>` tag.
 
-The dual-guardrail design is deliberate: **input screening blocks cost/abuse before the LLM is ever called; output screening catches leakage even if the model is tricked mid-conversation.** Both are cheap regex/heuristic checks — no extra LLM call, no added latency. LangGraph (vs. a hand-rolled loop) buys checkpointed memory, per-node streaming, and LangSmith tracing for free.
+The dual-guardrail design is deliberate: **input screening blocks cost/abuse before the LLM is ever called; output screening catches leakage even if the model is tricked mid-conversation.** Both are cheap regex/heuristic checks — no extra LLM call, no added latency. LangGraph (vs. a hand-rolled loop) buys checkpointed memory, per-node streaming, and callback-based tracing for free.
 
 ### Project Structure
 
@@ -160,7 +160,7 @@ agentic-api/
 ├── prompts/                 # Tracked: prompts/<name>/vN.yaml artifacts + registry.json state
 ├── evaluation/              # Tracked: versioned gate datasets (planner_dataset.yaml)
 ├── tests/                   # 151 tests — deterministic fakes, zero live calls by default
-├── docs/assets/             # Real run screenshots (below)
+├── docs/assets/             # Architecture SVG + Prometheus screenshot
 ├── Dockerfile               # Non-root image with HEALTHCHECK
 ├── docker-compose.yml       # Service + persistent memory volume
 ├── requirements.txt         # Runtime dependencies
@@ -187,7 +187,7 @@ The planner's system prompt is a **versioned, auditable product artifact**, not 
 
 **Fallback** — if `prompts/` is missing or `registry.json` is corrupt, the planner falls back to the embedded `PLANNER_SYSTEM_PROMPT`, logs a warning, and reports `prompt_version: "fallback"`; the service never fails to start over the registry.
 
-**Attribution** — every `/agent/run` and `/agent/stream` response carries `prompt_version` and `prompt_hash` (`sha256(template)[:12]`); the same values are bound into the structlog request context, the LangSmith run (`prompt:planner@v1` tag + metadata), and the `agent_planner_runs_total{prompt_name,prompt_version}` Prometheus counter. Prompt text itself never appears in logs, traces, metrics, or error payloads — only version and hash.
+**Attribution** — every `/agent/run` and `/agent/stream` response carries `prompt_version` and `prompt_hash` (`sha256(template)[:12]`); the same values are bound into the structlog request context, the Langfuse trace (`prompt:planner@v1` tag + metadata), and the `agent_planner_runs_total{prompt_name,prompt_version}` Prometheus counter. Prompt text itself never appears in logs, traces, metrics, or error payloads — the Langfuse client masks any served template to a version/hash placeholder before export, and trace attributes carry only version and hash.
 
 **Walkthrough:**
 
@@ -210,22 +210,13 @@ curl -s $B/prompts/planner/rollback $K -X POST -H 'Content-Type: application/jso
 
 ## �📡 Observability
 
-Every graph execution is traced end-to-end via LangSmith and correlated with structured JSON logs and Prometheus metrics. All screenshots below are real runs of this service:
-
-#### LangSmith Trace — Successful Run (echo tool)
-![LangSmith trace of a successful run](docs/assets/successful_execution.png)
-
-#### LangSmith Trace — Calculator Tool (ChatOpenAI step expanded)
-![LangSmith trace of the calculator tool](docs/assets/calculator_execution.png)
-
-#### LangSmith Trace — Guardrail-Blocked Request (error_output shortcut)
-![LangSmith trace of a blocked request](docs/assets/guardrail_blocked.png)
+Every graph execution can be traced end-to-end via Langfuse and is correlated with structured JSON logs and Prometheus metrics — no observability backend is required to run the service.
 
 #### Prometheus Metrics (`GET /metrics`)
 ![Prometheus metrics output](docs/assets/prometheus_metrics.png)
 
-- **LangSmith tracing**: with `LANGCHAIN_TRACING_V2=true` and a valid `LANGCHAIN_API_KEY`, every planner LLM call lands as a run under `LANGCHAIN_PROJECT`, tagged with the request's `X-Request-ID` **and** the serving prompt (`prompt:planner@v1` tag, plus `prompt_version`/`prompt_hash` run metadata — never the prompt text) for cross-referencing with application logs. The screenshots predate the prompt registry, so they show the trace structure but not these tags.
-- **LangSmith evaluation**: `tests/test_langsmith_evaluation.py` runs a real `langsmith.evaluate()` experiment against a fixed dataset (`agentic-api-eval`), producing a visible **Experiment** in the dashboard — not just a connectivity smoke test. Offline, the same dataset + evaluators run against a deterministic fake planner.
+- **Langfuse tracing** (optional, off unless configured): with `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` set, every planner LLM call lands as a trace under `LANGFUSE_BASE_URL`, carrying the request's `X-Request-ID` **and** the serving prompt (`prompt:planner@v1` tag, plus `prompt_version`/`prompt_hash` metadata). The client masks any served prompt template to a version/hash placeholder before export, so prompt text never reaches the dashboard. Tracing failures degrade to "no tracing" — a broken backend can never break a request.
+- **Evaluation**: the prompt-promotion gate is a versioned, offline dataset (`evaluation/planner_dataset.yaml`) executed through `python -m app.services.prompt_eval --check` — the same planner code path as production, with a deterministic planner for CI. `tests/test_langsmith_evaluation.py` additionally keeps an optional live LangSmith experiment (from the original tracing backend) runnable via `AGENTIC_LIVE_TESTS=1`.
 - **Structured logs**: JSON in non-development environments (console-friendly in `development`); every log line during a request is tagged with the same `request_id`, and planner steps bind `prompt_version` into the context.
 - **Metrics**: `GET /metrics` exposes standard HTTP metrics plus `agent_tool_calls_total{tool=...}`, `agent_blocked_requests_total`, and `agent_planner_runs_total{prompt_name,prompt_version}` — a traffic shift between prompt versions is visible directly.
 - **Health checks**: `GET /health/live` (liveness) and `GET /health/ready` (readiness — verifies required API keys and that the checkpointed graph initialized).
@@ -241,7 +232,7 @@ Most LLM demos break the moment a user pastes a jailbreak, the API rate-limits, 
 - Transient OpenAI rate limit? → retried with exponential backoff, not a 500 to your user.
 - User asks "now double that" six turns in? → SQLite checkpointer keeps full context per `session_id`.
 - Someone hammers the endpoint? → rate-limited per API key/IP before it ever reaches the LLM — a `429`, not a surprise invoice. Optional `X-API-Key` auth keeps the door closed entirely.
-- Need to debug what the model actually did? → LangSmith traces, JSON logs, and Prometheus counters tell the same story under one `request_id`.
+- Need to debug what the model actually did? → Langfuse traces, JSON logs, and Prometheus counters tell the same story under one `request_id`.
 
 Prompt change shipped a regression? → the A/B gate blocks promotion, every response names the `prompt_version` that produced it, and rollback is one audited call.
 
@@ -268,10 +259,9 @@ All configuration is environment-based via `pydantic-settings`. See [`.env.examp
 | `API_PREFIX` | `/api/v1` | Prefix for all agent API routes. |
 | `LOG_LEVEL` | `INFO` | Root logging level. |
 | `OPENAI_API_KEY` | — | OpenAI API key used by the planner LLM. |
-| `LANGCHAIN_TRACING_V2` | `true` | Enables LangSmith tracing. |
-| `LANGCHAIN_ENDPOINT` | `https://api.smith.langchain.com` | LangSmith API endpoint. |
-| `LANGCHAIN_API_KEY` | — | LangSmith API key. |
-| `LANGCHAIN_PROJECT` | `agentic-api` | LangSmith project name for traces. |
+| `LANGFUSE_PUBLIC_KEY` | — | Langfuse project public key (tracing active only when both keys are set). |
+| `LANGFUSE_SECRET_KEY` | — | Langfuse project secret key. |
+| `LANGFUSE_BASE_URL` | `https://cloud.langfuse.com` | Langfuse data region (`us.`/`jp.`/`hipaa.` variants exist). |
 | `CHECKPOINT_DB_PATH` | `data/checkpoints.sqlite` | Path to the SQLite database used for conversation memory. |
 | `AGENTIC_API_KEY` | — (unset) | If set, requires a matching `X-API-Key` header on `/agent/run` and `/agent/stream`. Left open if unset (local/dev friendly). |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Per-client request budget on `/agent/run` and `/agent/stream` (keyed by API key when present, otherwise IP). `0` disables enforcement. |
@@ -404,7 +394,7 @@ curl -s -X POST http://localhost:8000/api/v1/agent/run \
 pytest -v --cov=app
 ```
 
-**151 tests (1 live-only skipped), fully offline by default** — no `OPENAI_API_KEY` or `LANGCHAIN_API_KEY` needed. The planner LLM is replaced by a deterministic fake that exercises the entire graph (guardrail → plan → tool execution → output screening), and the LangSmith evaluation runs against an in-memory stand-in. The suite covers:
+**174 tests (1 live-only skipped), fully offline by default** — no `OPENAI_API_KEY`, `LANGFUSE_*` or `LANGCHAIN_API_KEY` needed. The planner LLM is replaced by a deterministic fake that exercises the entire graph (guardrail → plan → tool execution → output screening), and the tracing backend is faked so no trace can leave the process. The suite covers:
 
 - **Guardrails** — input injection detection and output leakage/reflection screening (OWASP LLM01 + LLM02).
 - **Tools** — `calculator`, `echo`, `web_search` (DuckDuckGo mocked).
@@ -414,10 +404,11 @@ pytest -v --cov=app
 - **Memory** — multi-turn history growth and `session_id` isolation via the real SQLite checkpointer.
 - **Streaming** — SSE event structure for safe and blocked requests.
 - **Observability** — health checks, `X-Request-ID` propagation, `/metrics`.
-- **Evaluation** — the LangSmith dataset + evaluator wiring (live experiment optional).
-- **Prompt registry** — lifecycle, immutability, path-traversal and secret screening, hash-chain tamper detection, the A/B gate (including the non-overridable safety metric), admin auth matrix, attribution in responses/SSE/LangSmith config/Prometheus, and fallback when the registry is missing.
+- **Evaluation** — the versioned gate dataset + evaluator wiring, run offline through `prompt_eval --check`.
+- **Tracing** — Langfuse opt-in behavior, handler attachment, masked prompt templates, and graceful degradation when the backend is unreachable.
+- **Prompt registry** — lifecycle, immutability, path-traversal and secret screening, hash-chain tamper detection, the A/B gate (including the non-overridable safety metric), admin auth matrix, attribution in responses/SSE/trace metadata/Prometheus, and fallback when the registry is missing.
 
-For true end-to-end confidence, set `AGENTIC_LIVE_TESTS=1` with real keys configured — the same suite then exercises the real OpenAI and LangSmith paths. CI runs this mode automatically on manual dispatch and a weekly schedule.
+For true end-to-end confidence, set `AGENTIC_LIVE_TESTS=1` with real keys configured — the same suite then exercises the real OpenAI and Langfuse paths (plus the optional LangSmith experiment mentioned above). CI runs this mode automatically on manual dispatch and a weekly schedule.
 
 Every push/PR to `main` runs via [GitHub Actions](.github/workflows/ci.yml): `ruff check .`, `mypy app`, the full `pytest --cov=app` suite **with no secrets configured**, and a `docker build` to catch Dockerfile regressions.
 
