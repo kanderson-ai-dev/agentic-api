@@ -160,7 +160,7 @@ agentic-api/
 ├── prompts/                 # Tracked: prompts/<name>/vN.yaml artifacts + registry.json state
 ├── evaluation/              # Tracked: versioned gate datasets (planner_dataset.yaml)
 ├── tests/                   # 151 tests — deterministic fakes, zero live calls by default
-├── docs/assets/             # Architecture SVG + Prometheus screenshot
+├── docs/assets/             # Architecture SVG + real run screenshots (below)
 ├── Dockerfile               # Non-root image with HEALTHCHECK
 ├── docker-compose.yml       # Service + persistent memory volume
 ├── requirements.txt         # Runtime dependencies
@@ -218,6 +218,22 @@ Every graph execution can be traced end-to-end via Langfuse and is correlated wi
 - **Langfuse tracing** (optional, off unless configured): with `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` set, every planner LLM call lands as a trace under `LANGFUSE_BASE_URL`, carrying the request's `X-Request-ID` **and** the serving prompt (`prompt:planner@v1` tag, plus `prompt_version`/`prompt_hash` metadata). The client masks any served prompt template to a version/hash placeholder before export, so prompt text never reaches the dashboard. Tracing failures degrade to "no tracing" — a broken backend can never break a request.
 - **Evaluation**: the prompt-promotion gate is a versioned, offline dataset (`evaluation/planner_dataset.yaml`) executed through `python -m app.services.prompt_eval --check` — the same planner code path as production, with a deterministic planner for CI.
 - **Langfuse experiments** (manual, real keys only): `python scripts/langfuse_experiment.py [--version vN]` mirrors the gate dataset into a Langfuse dataset, runs every case through the real graph (`gpt-4o-mini` + real traces, templates masked as in serving), and scores items with the *same* gate functions — so experiment metrics can never drift from `prompt_eval --check`. Runs are named `planner@vN-<date>`; run it for a candidate and the promoted version to compare them side by side under Experiments.
+
+#### Langfuse Experiment Compare — `planner@v1` vs `planner@v2`
+![Langfuse experiment comparison](docs/assets/langfuse_experiment_compare.png)
+
+The gate's own scores, live: the tool-averse `v2` candidate drops `tool_selection_accuracy` to 45% (and `case_pass` to 70%) while `injection_block_rate` and `prompt_leak_clean` hold at 100% — the regression the offline promotion gate would block.
+
+#### Langfuse Trace — Experiment Item (`ChatOpenAI` expanded)
+![Langfuse trace with masked prompt](docs/assets/langfuse_trace_masked.png)
+
+One dataset case end-to-end: `LangGraph → guardrail → planner → ChatOpenAI → execution → calculator → output_guardrail`, then `gate_evaluator` scoring it. The system message exports as `[prompt:planner@v1 sha256:c03f7baaef81]` — the template itself never leaves for the trace backend.
+
+#### Langfuse Dataset — `planner_gate_eval`
+![Langfuse dataset items](docs/assets/langfuse_dataset_items.png)
+
+The gate dataset mirrored for live experiments: inputs, expectations (`allowed_tools` / `expect_blocked`), and `case_id`/`group`/`dataset_version` metadata only — no prompt text.
+
 - **Structured logs**: JSON in non-development environments (console-friendly in `development`); every log line during a request is tagged with the same `request_id`, and planner steps bind `prompt_version` into the context.
 - **Metrics**: `GET /metrics` exposes standard HTTP metrics plus `agent_tool_calls_total{tool=...}`, `agent_blocked_requests_total`, and `agent_planner_runs_total{prompt_name,prompt_version}` — a traffic shift between prompt versions is visible directly.
 - **Health checks**: `GET /health/live` (liveness) and `GET /health/ready` (readiness — verifies required API keys and that the checkpointed graph initialized).
