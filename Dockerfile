@@ -1,5 +1,8 @@
 FROM python:3.10-slim
 
+LABEL org.opencontainers.image.authors="Kaarsten Anderson <contact@kaarstenanderson.com>" \
+      org.opencontainers.image.title="agentic-api"
+
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
