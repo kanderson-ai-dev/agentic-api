@@ -113,3 +113,9 @@ architecture: **direct prompt injection against a paid LLM endpoint** and
   perimeter. `SEARCH_PROVIDER=none` disables outbound search entirely for
   offline/egress-restricted deployments; a keyed provider (e.g. Tavily)
   with a data-processing agreement is the production-grade path.
+
+## Reporting a vulnerability
+
+Report security issues privately to
+[contact@kaarstenanderson.com](mailto:contact@kaarstenanderson.com) —
+please do not open a public issue for unpatched vulnerabilities.

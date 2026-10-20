@@ -452,10 +452,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and conventions.
 
 If you need an LLM feature that's safe to put in front of real users (prompt-injection defenses, cost controls, tracing, evaluation), I can adapt this exact architecture to your use case.
 
-<!--
-TODO: Uncomment and set your real Upwork profile URL once available.
-📩 [Message me on Upwork]({{upwork_profile_url}}) — I'll usually respond within a few hours.
--->
+📩 [Email me](mailto:contact@kaarstenanderson.com) — I'll usually respond within a few hours.
 
 ---
 

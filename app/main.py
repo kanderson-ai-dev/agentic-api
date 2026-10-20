@@ -69,6 +69,7 @@ app = FastAPI(
     version=settings.app_version,
     debug=settings.debug,
     lifespan=lifespan,
+    contact={"name": "Kaarsten Anderson", "email": "contact@kaarstenanderson.com"},
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
