@@ -20,5 +20,8 @@ librt==0.15.0
 pytest-cov==7.1.0
 coverage==7.16.1
 
+# Type stubs (required for `mypy app` on a clean install)
+types-PyYAML==6.0.12.20260906
+
 # Dependency vulnerability scanning
 pip-audit==2.10.1
