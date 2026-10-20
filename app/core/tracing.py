@@ -65,18 +65,30 @@ def _mask(*, data: Any, **_kwargs: Any) -> Any:
     return data
 
 
+def _require_credentials(settings: Settings) -> tuple[str, str]:
+    """Return the (public_key, secret_key) pair or raise when tracing is unconfigured.
+
+    A typed error is used instead of `assert` so the invariant survives
+    `python -O`; callers that wrap this degrade to "no tracing".
+    """
+    if settings.langfuse_public_key is None or settings.langfuse_secret_key is None:
+        raise RuntimeError("Langfuse credentials are not configured.")
+    return (
+        settings.langfuse_public_key,
+        settings.langfuse_secret_key.get_secret_value(),
+    )
+
+
 def _get_or_create_client(settings: Settings) -> "Langfuse":
     """Return the cached client for this key, building it (with `mask`) once."""
     from langfuse import Langfuse
 
-    assert settings.langfuse_public_key is not None
-    assert settings.langfuse_secret_key is not None
-    public_key = settings.langfuse_public_key
+    public_key, secret_key = _require_credentials(settings)
     with _lock:
         if public_key not in _clients:
             _clients[public_key] = Langfuse(
                 public_key=public_key,
-                secret_key=settings.langfuse_secret_key.get_secret_value(),
+                secret_key=secret_key,
                 base_url=settings.langfuse_base_url,
                 mask=_mask,
             )
@@ -112,8 +124,8 @@ def build_trace_callbacks(settings: Settings) -> list[object]:
         from langfuse.langchain import CallbackHandler
 
         _get_or_create_client(settings)
-        assert settings.langfuse_public_key is not None
-        return [CallbackHandler(public_key=settings.langfuse_public_key)]
+        public_key, _ = _require_credentials(settings)
+        return [CallbackHandler(public_key=public_key)]
     except Exception:  # noqa: BLE001 - degrade to no tracing
         logger.warning("Langfuse tracing disabled for this request.")
         return []

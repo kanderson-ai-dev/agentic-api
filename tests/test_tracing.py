@@ -77,6 +77,20 @@ class TestLangfuseEnabled:
         assert tracing.langfuse_enabled(settings) is False
 
 
+class TestClientCredentials:
+    """Credential invariants must be typed errors, not `assert` (python -O safe)."""
+
+    def test_missing_public_key_raises_typed_error(self, fused: None, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "langfuse_public_key", None)
+        with pytest.raises(RuntimeError):
+            tracing._get_or_create_client(settings)
+
+    def test_missing_secret_key_raises_typed_error(self, fused: None, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "langfuse_secret_key", None)
+        with pytest.raises(RuntimeError):
+            tracing._get_or_create_client(settings)
+
+
 class TestBuildTraceCallbacks:
     def test_returns_empty_when_disabled(self) -> None:
         assert tracing.build_trace_callbacks(settings) == []
