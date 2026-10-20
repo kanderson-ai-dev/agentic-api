@@ -9,7 +9,7 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-agent%20orchestration-1C3C3C)](https://github.com/langchain-ai/langgraph)
 [![Pydantic](https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white)](https://docs.pydantic.dev/)
 [![CI](https://github.com/kanderson-ai-dev/agentic-api/actions/workflows/ci.yml/badge.svg)](https://github.com/kanderson-ai-dev/agentic-api/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-97.9%25-brightgreen)](https://github.com/kanderson-ai-dev/agentic-api/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-98%25-brightgreen)](https://github.com/kanderson-ai-dev/agentic-api/actions/workflows/ci.yml)
 [![Ruff](https://img.shields.io/badge/linting-ruff-red)](https://github.com/astral-sh/ruff)
 [![Type checked: mypy](https://img.shields.io/badge/type%20checked-mypy-blue)](https://mypy-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -159,7 +159,7 @@ agentic-api/
 │       └── prompt_eval.py      # Offline A/B evaluation + promotion gate (--check CLI)
 ├── prompts/                 # Tracked: prompts/<name>/vN.yaml artifacts + registry.json state
 ├── evaluation/              # Tracked: versioned gate datasets (planner_dataset.yaml)
-├── tests/                   # 151 tests — deterministic fakes, zero live calls by default
+├── tests/                   # 176 tests — deterministic fakes, zero live calls by default
 ├── docs/assets/             # Architecture SVG + real run screenshots (below)
 ├── Dockerfile               # Non-root image with HEALTHCHECK
 ├── docker-compose.yml       # Service + persistent memory volume
@@ -171,7 +171,7 @@ agentic-api/
 
 ---
 
-## �️ Prompt Registry
+## 🗂️ Prompt Registry
 
 The planner's system prompt is a **versioned, auditable product artifact**, not a string in code. Each version is an immutable `prompts/<name>/vN.yaml` artifact (`name`, `version`, `template`, `model`, `temperature`, `author`, timestamps); `prompts/registry.json` tracks which version is promoted. Both are committed — prompt changes land as reviewable diffs in a PR, and every lifecycle event is appended to a SHA-256 hash-chained audit log (`prev_hash` links each entry to the previous one; tampering is detectable via `GET /prompts/audit`).
 
@@ -208,7 +208,7 @@ curl -s $B/prompts/planner/rollback $K -X POST -H 'Content-Type: application/jso
 
 ---
 
-## �📡 Observability
+## 📡 Observability
 
 Every graph execution can be traced end-to-end via Langfuse and is correlated with structured JSON logs and Prometheus metrics — no observability backend is required to run the service.
 
@@ -411,7 +411,7 @@ curl -s -X POST http://localhost:8000/api/v1/agent/run \
 pytest -v --cov=app
 ```
 
-**174 tests (1 live-only skipped), fully offline by default** — no `OPENAI_API_KEY`, `LANGFUSE_*` or `LANGCHAIN_API_KEY` needed. The planner LLM is replaced by a deterministic fake that exercises the entire graph (guardrail → plan → tool execution → output screening), and the tracing backend is faked so no trace can leave the process. The suite covers:
+**176 tests (175 pass offline, 1 live-only skipped), fully offline by default** — no `OPENAI_API_KEY`, `LANGFUSE_*` or `LANGCHAIN_API_KEY` needed. The planner LLM is replaced by a deterministic fake that exercises the entire graph (guardrail → plan → tool execution → output screening), and the tracing backend is faked so no trace can leave the process. The suite covers:
 
 - **Guardrails** — input injection detection and output leakage/reflection screening (OWASP LLM01 + LLM02).
 - **Tools** — `calculator`, `echo`, `web_search` (DuckDuckGo mocked).
