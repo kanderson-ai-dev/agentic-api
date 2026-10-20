@@ -13,6 +13,7 @@ AGENTS.md
 PLAN-2.md
 README-example1.md
 README-example2.md
+PLAN_fix.md
 
 # Python artifacts
 __pycache__/
@@ -30,4 +31,5 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+NUL
 PLAN_upgrade.md
