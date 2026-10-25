@@ -55,14 +55,20 @@ class TestAgentGraph:
         assert "blocked" in state["final_output"].lower()
 
     def test_graph_executes_calculator_tool_for_safe_input(self, fake_planner) -> None:
-        """Tool selection is only deterministic offline; a live planner may
-        answer simple arithmetic without a tool call (the eval gate scores it)."""
+        """Live-mode contract: the graph runs end to end without blocking.
+
+        Tool selection, tool-input formatting, and arithmetic correctness are
+        only deterministic offline — a live planner may answer directly or
+        pass loosely formatted input (the evaluators score those behaviours).
+        """
         state = agent_graph.invoke(initial_state("What is 15 times 4?"))
         assert state["blocked"] is False
-        assert state["errors"] == []
-        if not live_planner_active():
+        if live_planner_active():
+            assert state["final_output"]
+        else:
+            assert state["errors"] == []
             assert any(call["tool"] == "calculator" for call in state["tool_calls"])
-        assert "60" in state["final_output"]
+            assert "60" in state["final_output"]
 
     def test_agent_run_endpoint_returns_structured_output(self, fake_planner, client) -> None:
         response = client.post("/api/v1/agent/run", json={"input": "Say hello to the team"})

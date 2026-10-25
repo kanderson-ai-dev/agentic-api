@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from conftest import live_planner_active
 from fastapi.testclient import TestClient
 
 from app.api.routes import _run_config
@@ -102,8 +103,9 @@ class TestRunAttribution:
         assert response.status_code == 200
         body = response.json()
         assert body["prompt_version"] == "fallback"
-        assert body["errors"] == []
-        assert "60" in body["final_output"]
+        if not live_planner_active():
+            assert body["errors"] == []
+            assert "60" in body["final_output"]
 
 
 class TestStreamAttribution:
