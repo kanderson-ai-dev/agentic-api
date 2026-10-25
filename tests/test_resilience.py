@@ -31,6 +31,20 @@ class TestInvokePlannerRetry:
         assert result is expected
         assert mock_llm.invoke.call_count == 3
 
+    def test_retries_on_internal_server_error(self) -> None:
+        expected = PlanResult(plan="ok", tool_calls=[])
+        mock_llm = MagicMock()
+        response = httpx2.Response(500, request=_REQUEST)
+        mock_llm.invoke.side_effect = [
+            openai.InternalServerError("boom", response=response, body=None),
+            expected,
+        ]
+
+        result = _invoke_planner(mock_llm, [])
+
+        assert result is expected
+        assert mock_llm.invoke.call_count == 2
+
     def test_gives_up_after_max_attempts(self) -> None:
         mock_llm = MagicMock()
         mock_llm.invoke.side_effect = _rate_limit_error()
@@ -38,7 +52,7 @@ class TestInvokePlannerRetry:
         with pytest.raises(openai.RateLimitError):
             _invoke_planner(mock_llm, [])
 
-        assert mock_llm.invoke.call_count == 3
+        assert mock_llm.invoke.call_count == 5
 
     def test_does_not_retry_non_transient_errors(self) -> None:
         mock_llm = MagicMock()

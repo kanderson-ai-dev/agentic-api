@@ -152,10 +152,18 @@ def _build_llm(
 
 
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=8),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=1, max=16),
     retry=retry_if_exception_type(
-        (openai.RateLimitError, openai.APITimeoutError, openai.APIConnectionError)
+        (
+            openai.RateLimitError,
+            openai.APITimeoutError,
+            openai.APIConnectionError,
+            openai.InternalServerError,
+            # A malformed structured-output result is a transient model quirk
+            # worth one more attempt rather than an instant planner error.
+            TypeError,
+        )
     ),
     before_sleep=before_sleep_log(logger, logging.WARNING),
     reraise=True,
