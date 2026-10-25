@@ -2,6 +2,8 @@
 
 import json
 
+from conftest import live_planner_active
+
 from app.agents.graph import PlanResult
 from app.core.prompts import (
     AGENT_EXECUTION_ERROR_MESSAGE,
@@ -94,7 +96,10 @@ class TestAgentStream:
         content_events = payloads[gate_idx + 1 :]
         assert content_events, "expected deferred content events after the gate"
         planner_content = next(p for p in content_events if p["node"] == "planner")
-        assert "Calculate" in planner_content["update"]["plan"]
+        if live_planner_active():
+            assert planner_content["update"]["plan"]
+        else:
+            assert "Calculate" in planner_content["update"]["plan"]
 
     def test_stream_error_event_does_not_leak_exception_text(
         self, client, monkeypatch

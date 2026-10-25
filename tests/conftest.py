@@ -27,6 +27,11 @@ requires_live_tests = pytest.mark.skipif(
     not LIVE_TESTS, reason="AGENTIC_LIVE_TESTS=1 not set; running in offline mode."
 )
 
+
+def live_planner_active() -> bool:
+    """True when tests run against the real planner LLM (live mode + key set)."""
+    return LIVE_TESTS and settings.openai_api_key is not None
+
 if not LIVE_TESTS:
     # `app.main` re-exports these into os.environ at import time (before this
     # module body runs); force tracing off at both levels so the offline suite
@@ -100,7 +105,7 @@ def fake_planner(monkeypatch: pytest.MonkeyPatch) -> None:
     `AGENTIC_LIVE_TESTS=1` and a real `OPENAI_API_KEY` is configured the patch
     is skipped, exercising the real planner end to end.
     """
-    if LIVE_TESTS and settings.openai_api_key is not None:
+    if live_planner_active():
         return
     monkeypatch.setattr("app.agents.graph._build_llm", _FakePlannerLLM)
 
