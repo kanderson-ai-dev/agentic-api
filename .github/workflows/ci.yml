@@ -55,7 +55,7 @@ jobs:
           echo "Measured coverage: **${TOTAL}** — update the README badge only with this number." >> "$GITHUB_STEP_SUMMARY"
 
   live-e2e:
-    name: Live end-to-end (manual/weekly, requires secrets)
+    name: Live end-to-end (manual/weekly, requires OPENAI_API_KEY)
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
@@ -69,30 +69,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      # Fail fast with a readable message when the Langfuse secret pair is
-      # wrong or the region mismatches — an OTLP 401 buried in pytest logs is
-      # hard to diagnose.
-      - name: Verify Langfuse credentials
-        env:
-          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
-          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
-          LANGFUSE_BASE_URL: https://cloud.langfuse.com
-        run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" -u "$LANGFUSE_PUBLIC_KEY:$LANGFUSE_SECRET_KEY" "$LANGFUSE_BASE_URL/api/public/projects")
-          if [ "$code" != "200" ]; then
-            echo "::error::Langfuse auth check failed (HTTP $code) — verify the LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY secrets (not swapped, no whitespace) and that the project region matches $LANGFUSE_BASE_URL"
-            exit 1
-          fi
-
-      # Live run exercises the deployed stack only: real gpt-4o-mini + Langfuse
-      # tracing. LangSmith stays a legacy opt-in path — no LANGCHAIN_* vars, so
-      # the experiment test skips itself instead of burning a foreign quota.
-      - name: Run tests against real OpenAI + observability backends
+      # Live run verifies the agent against real gpt-4o-mini only — the single
+      # external dependency that matters. No LANGFUSE_* or LANGCHAIN_* secrets
+      # are injected: tracing internals are covered by the offline fake-client
+      # suite, and this run also exercises the production degrade-to-no-tracing
+      # path, which must never block a request.
+      - name: Run tests against real OpenAI
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
-          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
-          LANGFUSE_BASE_URL: https://cloud.langfuse.com
           AGENTIC_LIVE_TESTS: "1"
         run: pytest -v
 
