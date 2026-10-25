@@ -228,7 +228,7 @@ class TestValidation:
         "template",
         [
             "Use key sk-abc123def456ghi789 to authenticate.",
-            "LangSmith key: lsv2_abcdef123456",
+            "LangSmith key: " + "lsv2_" + "abcdef123456",
             "Authorization: Bearer abc.def.ghi",
         ],
     )

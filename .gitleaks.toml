@@ -1,0 +1,21 @@
+title = "agentic-api gitleaks config"
+
+[extend]
+useDefault = true
+
+# This repository contains no real credentials. The entries below suppress a
+# known false positive: a synthetic LangSmith-shaped token used in the
+# secret-rejection tests of the prompt registry.
+[allowlist]
+description = "Synthetic secret-shaped test fixtures only"
+commits = [
+    # Historical finding: "feat: add versioned prompt registry with hash-chained
+    # audit log" introduced a fake 'lsv2_' token literal in
+    # tests/test_prompt_registry.py (removed from the working tree afterwards).
+    "65858b67afd15d69fc13af4d96ea0fcef0372b3c",
+]
+regexTarget = "secret"
+regexes = [
+    # Exact fake token value used in the rejection tests.
+    '''lsv2_abcdef123456''',
+]
