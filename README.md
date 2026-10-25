@@ -159,7 +159,7 @@ agentic-api/
 │       └── prompt_eval.py      # Offline A/B evaluation + promotion gate (--check CLI)
 ├── prompts/                 # Tracked: prompts/<name>/vN.yaml artifacts + registry.json state
 ├── evaluation/              # Tracked: versioned gate datasets (planner_dataset.yaml)
-├── tests/                   # 176 tests — deterministic fakes, zero live calls by default
+├── tests/                   # 179 tests — deterministic fakes, zero live calls by default
 ├── docs/assets/             # Architecture SVG + real run screenshots (below)
 ├── Dockerfile               # Non-root image with HEALTHCHECK
 ├── docker-compose.yml       # Service + persistent memory volume
@@ -411,7 +411,7 @@ curl -s -X POST http://localhost:8000/api/v1/agent/run \
 pytest -v --cov=app
 ```
 
-**176 tests (175 pass offline, 1 live-only skipped), fully offline by default** — no `OPENAI_API_KEY`, `LANGFUSE_*` or `LANGCHAIN_API_KEY` needed. The planner LLM is replaced by a deterministic fake that exercises the entire graph (guardrail → plan → tool execution → output screening), and the tracing backend is faked so no trace can leave the process. The suite covers:
+**179 tests (178 pass offline, 1 live-only skipped), fully offline by default** — no `OPENAI_API_KEY`, `LANGFUSE_*` or `LANGCHAIN_API_KEY` needed. The planner LLM is replaced by a deterministic fake that exercises the entire graph (guardrail → plan → tool execution → output screening), and the tracing backend is faked so no trace can leave the process. The suite covers:
 
 - **Guardrails** — input injection detection and output leakage/reflection screening (OWASP LLM01 + LLM02).
 - **Tools** — `calculator`, `echo`, `web_search` (DuckDuckGo mocked).
@@ -425,7 +425,7 @@ pytest -v --cov=app
 - **Tracing** — Langfuse opt-in behavior, handler attachment, masked prompt templates, and graceful degradation when the backend is unreachable.
 - **Prompt registry** — lifecycle, immutability, path-traversal and secret screening, hash-chain tamper detection, the A/B gate (including the non-overridable safety metric), admin auth matrix, attribution in responses/SSE/trace metadata/Prometheus, and fallback when the registry is missing.
 
-For true end-to-end confidence, set `AGENTIC_LIVE_TESTS=1` with real keys configured — the same suite then exercises the real OpenAI and Langfuse paths. CI runs this mode automatically on manual dispatch and a weekly schedule.
+For true end-to-end confidence, set `AGENTIC_LIVE_TESTS=1` with a real `OPENAI_API_KEY` — the same suite then exercises the real planner (LLM-dependent assertions are relaxed in this mode; Langfuse stays opt-in and non-blocking). CI runs this mode with only the OpenAI key on manual dispatch and a weekly schedule.
 
 Every push/PR to `main` runs via [GitHub Actions](.github/workflows/ci.yml): `ruff check .`, `mypy app`, the full `pytest --cov=app` suite **with no secrets configured**, and a `docker build` to catch Dockerfile regressions.
 
