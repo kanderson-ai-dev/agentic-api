@@ -12,10 +12,12 @@ from app.core import tracing
 
 @pytest.fixture(autouse=True)
 def _clean_tracing_state():
-    """Each test starts from a pristine client/template cache."""
+    """Each test starts from a pristine client/template cache and fake list."""
     tracing._reset_for_tests()
+    _FakeLangfuse.instances.clear()
     yield
     tracing._reset_for_tests()
+    _FakeLangfuse.instances.clear()
 
 
 @pytest.fixture
@@ -60,7 +62,9 @@ def _stub_langfuse(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class TestLangfuseEnabled:
-    def test_disabled_without_credentials(self) -> None:
+    def test_disabled_without_credentials(self, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "langfuse_public_key", None)
+        monkeypatch.setattr(settings, "langfuse_secret_key", None)
         assert tracing.langfuse_enabled(settings) is False
 
     def test_enabled_with_both_keys(self, fused: None) -> None:
@@ -68,9 +72,11 @@ class TestLangfuseEnabled:
 
     def test_disabled_with_only_public_key(self, monkeypatch) -> None:
         monkeypatch.setattr(settings, "langfuse_public_key", "pk-lf-test")
+        monkeypatch.setattr(settings, "langfuse_secret_key", None)
         assert tracing.langfuse_enabled(settings) is False
 
     def test_disabled_with_only_secret_key(self, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "langfuse_public_key", None)
         monkeypatch.setattr(
             settings, "langfuse_secret_key", SecretStr("sk-lf-test")
         )
@@ -92,7 +98,9 @@ class TestClientCredentials:
 
 
 class TestBuildTraceCallbacks:
-    def test_returns_empty_when_disabled(self) -> None:
+    def test_returns_empty_when_disabled(self, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "langfuse_public_key", None)
+        monkeypatch.setattr(settings, "langfuse_secret_key", None)
         assert tracing.build_trace_callbacks(settings) == []
 
     def test_attaches_handler_and_caches_client(
@@ -142,6 +150,8 @@ class TestBuildTraceCallbacks:
 
 class TestConfigureAndShutdown:
     def test_noop_when_disabled(self, monkeypatch) -> None:
+        monkeypatch.setattr(settings, "langfuse_public_key", None)
+        monkeypatch.setattr(settings, "langfuse_secret_key", None)
         _stub_langfuse(monkeypatch)
         _FakeLangfuse.instances.clear()
         tracing.configure_langfuse_environment(settings)
@@ -217,8 +227,10 @@ class TestMask:
 
 
 class TestRunConfig:
-    def test_callbacks_empty_offline(self, client) -> None:
-        """Conftest clears keys, so _run_config attaches no handler."""
+    def test_callbacks_empty_offline(self, client, monkeypatch) -> None:
+        """With no credentials configured, _run_config attaches no handler."""
+        monkeypatch.setattr(settings, "langfuse_public_key", None)
+        monkeypatch.setattr(settings, "langfuse_secret_key", None)
         from app.api.routes import _run_config
 
         request = SimpleNamespace(
