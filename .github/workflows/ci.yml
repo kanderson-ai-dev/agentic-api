@@ -35,9 +35,6 @@ jobs:
       # No API keys are injected here: the suite runs fully offline against
       # deterministic fakes, so CI is green on a clean fork with zero secrets.
       - name: Run tests with coverage (offline, no secrets required)
-        env:
-          LANGCHAIN_TRACING_V2: "false"
-          LANGCHAIN_PROJECT: agentic-api-ci
         run: pytest -v --cov=app --cov-report=term-missing
 
       # Offline gate: recomputes the audit hash chain and evaluates the
@@ -70,8 +67,8 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       # Live run verifies the agent against real gpt-4o-mini only — the single
-      # external dependency that matters. No LANGFUSE_* or LANGCHAIN_* secrets
-      # are injected: tracing internals are covered by the offline fake-client
+      # external dependency that matters. No observability-backend secrets are
+      # injected: tracing internals are covered by the offline fake-client
       # suite, and this run also exercises the production degrade-to-no-tracing
       # path, which must never block a request.
       - name: Run tests against real OpenAI
